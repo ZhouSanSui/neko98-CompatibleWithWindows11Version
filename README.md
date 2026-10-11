@@ -11,13 +11,19 @@
   一、怎么用
 ------------------------------------------------------------------------
 
-最简单：双击  成品\neko98-win11.exe  ，它会解压好并自动启动小猫。
+本仓库只放源码。编译好的成品请到 **Releases** 下载：
 
-也可以：把  成品\neko98-win11.zip  解压到一个固定文件夹
+    https://github.com/ZhouSanSui/neko98-CompatibleWithWindows11Version/releases/latest
+
+最简单：下载并双击  neko98-win11.exe  ，它会解压好并自动启动小猫。
+
+也可以：把  neko98-win11.zip  解压到一个固定文件夹
         （例如 D:\Neko98），再双击里面的 Neko98.exe。
 
         注意：别只解压到临时目录。那样在设置里勾选「开机自动启动」时，
         记下的会是临时路径，重启后就失效了。
+
+想自己编译：源码在  neko\  目录，进去双击  build_pet.bat  （需要 MinGW-w64）。
 
 小猫出现后：
   - 直接用鼠标拖动它即可搬位置。点在它周围的透明区域会穿透过去，
@@ -104,5 +110,41 @@
   → 可能被别的程序占用了，在设置里换一个组合。
     另外被管理员权限打开的窗口获得焦点时，Windows 不会转发全局快捷键，
     这是系统本身的行为。
+
+
+------------------------------------------------------------------------
+  四、校验值（SHA256 前 32 位）
+------------------------------------------------------------------------
+
+  Neko98.exe          423,847 字节   1526B22C18D810D9FBBCB3C252B0B4FA
+  NekoCFG.exe         365,457 字节   E2AC1DD1175B9A5241CE515D85C2CC2F
+  neko98-win11.zip    260,627 字节   8E7307F0A382AE313CBA2E27FD08532B
+  neko98-win11.exe    360,769 字节   F0D28131BCD76A3E846208EE53EA8877
+
+
+------------------------------------------------------------------------
+  五、从源码重新编译
+------------------------------------------------------------------------
+
+工具：MinGW-w64 (WinLibs POSIX/UCRT, g++ 16.2.0) + windres，64 位。
+
+    cd neko
+    build_pet.bat          → Neko98.exe
+    cd NekoCFG
+    build_cfg.bat          → NekoCFG.exe
+
+测试：
+
+    build_test.bat                   → test_render.exe
+    build_test_movement.bat          → test_movement.exe
+    build_test_movement_evidence.bat → test_movement_evidence.exe
+    build_test_autostart.bat         → test_autostart.exe
+    build_test_hotkey.bat            → test_hotkey.exe
+
+注意两个编码规则（后续维护必读）：
+  - 所有 .cpp / .h 是 UTF-8；
+  - 只有 NekoCFG.rc / NekoCFG_resource.h / NekoCFG_resource.hm 是 GBK，
+    对应的 windres 传参是 -c 936。
+  - 所有 .bat 必须保持纯 ASCII + CRLF。
 
 
