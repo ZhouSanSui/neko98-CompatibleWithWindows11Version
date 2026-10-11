@@ -1,0 +1,381 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "NekoCFG_resource.h"
+
+// Generated Help ID header file
+#define APSTUDIO_HIDDEN_SYMBOLS
+#include "NekoCFG_resource.hm"
+#undef APSTUDIO_HIDDEN_SYMBOLS
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.K.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENG)
+#ifdef _WIN32
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
+#pragma code_page(936)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_APPICON             ICON    DISCARDABLE     "res\\appicon.ico"
+IDI_DEFAULT             ICON    DISCARDABLE     "..\\res\\Awake.ico"
+IDI_TAB_SOUNDS          ICON    DISCARDABLE     "Res\\sounds.ico"
+IDI_TAB_MOVEMENT        ICON    DISCARDABLE     "Res\\movement.ico"
+IDI_TAB_DISPLAY         ICON    DISCARDABLE     "Res\\displayi.ico"
+IDI_TAB_INDEPENDENCE    ICON    DISCARDABLE     "res\\independence.ico"
+IDI_TAB_EFFECTS         ICON    DISCARDABLE     "res\\tab_effects.ico"
+
+#ifndef _MAC
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 4,0,0,1
+ PRODUCTVERSION 4,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "Comments", "NekoCFG 4.0g (Chinese, Windows 11 build)\0"
+            VALUE "CompanyName", "DHSoft\0"
+            VALUE "FileDescription", "Neko Desktop Pet Configuration\0"
+            VALUE "FileVersion", "4.0.0.1\0"
+            VALUE "InternalName", "NekoCFG\0"
+            VALUE "LegalCopyright", "Copyright (C) 1999 DHSoft\0"
+            VALUE "LegalTrademarks", "\0"
+            VALUE "OriginalFilename", "NekoCFG.exe\0"
+            VALUE "PrivateBuild", "\0"
+            VALUE "ProductName", "Neko 配置程序\0"
+            VALUE "ProductVersion", "4.0.0.1\0"
+            VALUE "SpecialBuild", "\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END
+
+#endif    // !_MAC
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_CONFIG DIALOGEX 0, 0, 312, 210
+STYLE DS_MODALFRAME | DS_SETFOREGROUND | DS_CENTER | DS_CONTEXTHELP | 
+    WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "设置 Neko"
+FONT 8, "Microsoft YaHei"
+BEGIN
+    LTEXT           "名&称:",IDC_STATIC,7,7,22,8
+    PUSHBUTTON      "添加新 Neko(&A)...",IDC_NEW,13,108,75,14,0,0,HIDC_NEW
+    PUSHBUTTON      "删除(&D)",IDC_DELETE,93,108,41,14,0,0,HIDC_DELETE
+    GROUPBOX        "常规(&G)",IDC_STATIC,5,126,135,62
+    CONTROL         "在任务栏显示图标(&I)",IDC_TASKBAR,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,133,115,10,0,HIDC_TASKBAR
+    CONTROL         "开机自动启动(&T)",IDC_AUTOSTART,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,146,115,10,0,HIDC_AUTOSTART
+    LTEXT           "暂停(&J):",IDC_STATIC,15,161,45,9
+    CONTROL         "",IDC_HOTKEY,"msctls_hotkey32",WS_TABSTOP,
+                    62,160,58,12,0,HIDC_HOTKEY
+    LTEXT           "隐藏(&W):",IDC_STATIC,15,176,45,9
+    CONTROL         "",IDC_HIDEHOTKEY,"msctls_hotkey32",WS_TABSTOP,
+                    62,175,58,12,0,HIDC_HIDEHOTKEY
+    PUSHBUTTON      "关于(&U)...",IDC_ABOUT,7,189,50,14,0,0,HIDC_ABOUT
+    CONTROL         "Tab1",IDC_TABS,"SysTabControl32",TCS_MULTILINE | 
+                    WS_TABSTOP,146,7,159,178,0,HIDC_TABS
+    DEFPUSHBUTTON   "确定",IDOK,145,189,50,14,0,0,HIDOK
+    PUSHBUTTON      "取消",IDCANCEL,200,189,50,14,0,0,HIDCANCEL
+    PUSHBUTTON      "应用(&P)",IDC_APPLY,255,189,50,14,0,0,HIDC_APPLY
+    PUSHBUTTON      "帮助(&H)",IDC_HELP,62,189,50,14,0,0,HIDC_HELP
+    LISTBOX         IDC_NAME,7,18,127,85,LBS_SORT | LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP,0,HIDC_NAME
+END
+
+IDD_MOVEMENT DIALOGEX 0, 0, 155, 151
+STYLE DS_CONTROL | WS_CHILD
+FONT 8, "Microsoft YaHei", 0, 0, 0x1
+BEGIN
+    GROUPBOX        "速度(&S)",IDC_STATIC,7,7,141,48
+    CONTROL         "慢",IDC_STATIC,"Static",SS_SIMPLE | WS_GROUP,12,23,15,
+                    8
+    CONTROL         "Slider1",IDC_SPEEDSLIDER,"msctls_trackbar32",
+                    TBS_NOTICKS | WS_TABSTOP,12,34,130,17,0,HIDC_SPEEDSLIDER
+    CONTROL         "快",IDC_STATIC,"Static",SS_SIMPLE | WS_GROUP,127,23,
+                    15,8
+    GROUPBOX        "鼠标灵敏度(&M)",IDC_STATIC,7,65,141,45
+    CONTROL         "低",IDC_STATIC,"Static",SS_SIMPLE | WS_GROUP,12,80,15,
+                    8
+    CONTROL         "Slider1",IDC_SENSESLIDER,"msctls_trackbar32",
+                    TBS_NOTICKS | WS_TABSTOP,12,90,130,17,0,HIDC_SENSESLIDER
+    CONTROL         "高",IDC_STATIC,"Static",SS_SIMPLE | WS_GROUP,127,80,
+                    15,8
+END
+
+IDD_SOUND DIALOGEX 0, 0, 155, 151
+STYLE DS_CONTROL | WS_CHILD
+FONT 8, "Microsoft YaHei", 0, 0, 0x1
+BEGIN
+    GROUPBOX        "频率(&F)",IDC_STATIC,8,7,140,63
+    LTEXT           "从不",IDC_STATIC,14,18,20,8
+    CONTROL         "Slider1",IDC_SOUNDFREQ,"msctls_trackbar32",TBS_NOTICKS | 
+                    WS_TABSTOP,15,27,125,17,0,HIDC_SOUNDFREQ
+    LTEXT           "总是",IDC_STATIC,118,18,23,8
+    LTEXT           "事件(&E):",IDC_STATIC,10,77,22,8
+    LISTBOX         IDC_SOUNDSAVAIL,32,76,116,43,LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP,0,HIDC_SOUNDSAVAIL
+    LTEXT           "名&称:",IDC_STATIC,9,121,22,8
+    EDITTEXT        IDC_SOUNDNAME,35,121,113,12,ES_AUTOHSCROLL | ES_READONLY | 
+                    NOT WS_BORDER,0,HIDC_SOUNDNAME
+    PUSHBUTTON      "",IDC_PREVIEW,10,134,15,14,BS_BITMAP,0,HIDC_PREVIEW
+    PUSHBUTTON      "无(&N)",IDC_NONE,43,134,50,14,0,0,HIDC_NONE
+    PUSHBUTTON      "浏览(&B)...",IDC_BROWSE,99,134,50,14,0,0,HIDC_BROWSE
+    LTEXT           "（当该值远高于 10% 时，性能可能会受到影响）",
+                    IDC_STATIC,15,47,130,20,0,WS_EX_TRANSPARENT
+    LTEXT           "部分",IDC_STATIC,66,18,20,8
+END
+
+IDD_NEWNEKO DIALOG DISCARDABLE  0, 0, 213, 66
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "新建 Neko"
+FONT 8, "Microsoft YaHei"
+BEGIN
+    ICON            IDI_DEFAULT,IDC_STATIC,7,9,20,20
+    LTEXT           "请输入新 Neko 的名称(&N)：",IDC_STATIC,38,7,111,
+                    8
+    COMBOBOX        IDC_NEWNEKONAME,38,16,168,78,CBS_DROPDOWN | CBS_SORT | 
+                    WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "确定",IDOK,102,45,50,14
+    PUSHBUTTON      "取消",IDCANCEL,156,45,50,14
+END
+
+IDD_ABOUTBOX DIALOGEX 0, 0, 182, 101
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "关于 Neko"
+FONT 8, "Microsoft YaHei"
+BEGIN
+    DEFPUSHBUTTON   "确定",IDOK,65,80,50,14
+    ICON            IDI_DEFAULT,IDC_STATIC,5,10,21,20
+    LTEXT           "本程序是免费软件（FREEWARE）！",IDC_STATIC,25,60,
+                    131,8
+    LTEXT           "Neko for Windows v4.0g\n由 David Harvey 移植自\nMasayuki Koba 的 X-Windows 源代码",
+                    IDC_STATIC,35,10,142,25,0,WS_EX_TRANSPARENT
+    LTEXT           "http://www.geocities.com/siliconvalley/haven/4173/",
+                    IDC_STATIC,5,40,170,8
+END
+
+IDD_DISPLAY DIALOGEX 0, 0, 155, 151
+STYLE DS_CONTROL | WS_CHILD
+FONT 8, "Microsoft YaHei"
+BEGIN
+    GROUPBOX        "大小(&S)",IDC_STATIC,7,7,136,65
+    LTEXT           "较小",IDC_STATIC,12,20,24,8
+    LTEXT           "较大",IDC_STATIC,122,20,21,8
+    CONTROL         "Slider1",IDC_SCALESLIDER,"msctls_trackbar32",
+                    TBS_NOTICKS | WS_TABSTOP,15,30,125,15,0,HIDC_SCALESLIDER
+    LTEXT           "缩放:",IDC_STATIC,36,55,21,8
+    LTEXT           "100%",IDC_SCALEDISPLAY,62,55,25,8,0,0,HIDC_SCALEDISPLAY
+    PUSHBUTTON      "使用默认(&D)",IDC_SET100,92,52,50,14,0,0,HIDC_SET100
+    GROUPBOX        "图像库(&I)",IDC_STATIC,7,76,136,54
+    LTEXT           "文件名(&F):",IDC_STATIC,15,88,33,8
+    EDITTEXT        IDC_IMAGELIB,15,98,125,12,ES_AUTOHSCROLL | ES_READONLY | 
+                    NOT WS_BORDER,0,HIDC_IMAGELIB
+    PUSHBUTTON      "更改(&C)...",IDC_CHANGE,36,112,50,15,0,0,HIDC_CHANGE
+    PUSHBUTTON      "使用默认(&U)",IDC_DEFAULT,92,112,50,15,0,0,HIDC_DEFAULT
+    CONTROL         "始终置顶(&T)",IDC_ALWAYSONTOP,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,134,64,10,0,
+                    HIDC_ALWAYSONTOP
+END
+
+IDD_INDEPENDENCE DIALOGEX 0, 0, 155, 149
+STYLE DS_CONTROL | WS_CHILD
+FONT 8, "Microsoft YaHei", 0, 0, 0x1
+BEGIN
+    GROUPBOX        "行为(&B)",IDC_STATIC,7,7,141,58
+    LTEXT           "动作(&A):",IDC_STATIC,15,23,23,8
+    COMBOBOX        IDC_ACTION,40,19,100,66,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP,0,HIDC_ACTION
+    LTEXT           "（无）",IDC_ACTIONDESC,15,35,125,25,0,0,HIDC_ACTIONDESC
+END
+
+IDD_EFFECTS DIALOGEX 0, 0, 155, 151
+STYLE DS_CONTROL | WS_CHILD
+FONT 8, "Microsoft YaHei"
+BEGIN
+    GROUPBOX        "脚印图像(&F)",IDC_STATIC,7,7,141,74
+    CONTROL         "启用脚印(&E)",IDC_FOOTPRINTS,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,14,18,71,10,0,
+                    HIDC_FOOTPRINTS
+    LTEXT           "文件名(&F):",IDC_STATIC,14,33,33,8
+    EDITTEXT        IDC_IMAGELIB,14,43,125,12,ES_AUTOHSCROLL | ES_READONLY | 
+                    NOT WS_BORDER,0,HIDC_IMAGELIB
+    PUSHBUTTON      "更改(&C)...",IDC_CHANGE,35,59,50,15,0,0,HIDC_CHANGE
+    PUSHBUTTON      "使用默认(&U)",IDC_DEFAULT,91,59,50,15,0,0,HIDC_DEFAULT
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    IDD_CONFIG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 305
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 203
+    END
+
+    IDD_MOVEMENT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 148
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 144
+    END
+
+    IDD_SOUND, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 148
+        VERTGUIDE, 10
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 149
+        HORZGUIDE, 137
+    END
+
+    IDD_NEWNEKO, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 206
+        VERTGUIDE, 38
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 59
+        HORZGUIDE, 29
+    END
+
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 175
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 94
+    END
+
+    IDD_DISPLAY, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 148
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 144
+    END
+
+    IDD_INDEPENDENCE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 148
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 142
+    END
+
+    IDD_EFFECTS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 148
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 144
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "NekoCFG_resource.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Cursor
+//
+
+IDC_PLAYING             CURSOR  DISCARDABLE     "res\\playing.cur"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDR_PLAYBITMAP          BITMAP  DISCARDABLE     "res\\play.bmp"
+#endif    // English (U.K.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

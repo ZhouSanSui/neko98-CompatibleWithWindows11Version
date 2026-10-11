@@ -1,0 +1,5 @@
+;!@Install@!UTF-8!
+Title="Neko98 桌面小猫 (Windows 11 修复版)"
+BeginPrompt="即将解压并启动桌面小猫，是否继续？"
+ExecuteFile="Neko98.exe"
+;!@InstallEnd@!
