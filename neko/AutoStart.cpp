@@ -33,6 +33,58 @@ static BOOL HasFileName( const char* pszPath, const char* pszName )
     return ( _strnicmp( pszPath + ( cbPath - cbName ), pszName, cbName ) == 0 );
 }
 
+/* Strip the surrounding quotes from a stored Run value, so the path can be
+   handed to GetFileAttributes. Returns FALSE for an empty value. */
+static BOOL UnquotePath( const char* pszValue, char* pszOut, int cbOut )
+{
+    if( pszValue == NULL || *pszValue == '\0' ) return FALSE;
+
+    const char* pszRead = pszValue;
+    if( *pszRead == '"' ) pszRead++;
+
+    int i = 0;
+    while( *pszRead != '\0' && *pszRead != '"' && i < cbOut - 1 )
+        pszOut[i++] = *pszRead++;
+    pszOut[i] = '\0';
+
+    return ( i > 0 );
+}
+
+/* TRUE when the path names a file that is really there (not a directory). */
+static BOOL FileExists( const char* pszPath )
+{
+    DWORD dwAttr = GetFileAttributes( pszPath );
+    return ( dwAttr != INVALID_FILE_ATTRIBUTES && ( dwAttr & FILE_ATTRIBUTE_DIRECTORY ) == 0 );
+}
+
+/* TRUE when we are running from the throw-away folder our self-extracting
+   installer unpacks to. 7-Zip extracts the payload to "%TEMP%\7z<random>.tmp"
+   and DELETES it again when the program exits, so storing a Run entry that
+   points in there would leave auto-start dead by the next logon.
+
+   The test is deliberately narrow (the leaf folder must look like a 7-Zip
+   extraction folder) because the pet itself is perfectly happy living in any
+   ordinary folder, including a portable one the user unzipped by hand. */
+static BOOL IsThrowAwayDir( const char* pszModulePath )
+{
+    char szDir[MAX_PATH];
+    lstrcpyn( szDir, pszModulePath, MAX_PATH );
+
+    char* pszSlash = strrchr( szDir, '\\' );
+    if( pszSlash != NULL ) *pszSlash = '\0';
+
+    //the leaf folder name, e.g. "7zS3A2F.tmp"
+    char* pszLeaf = strrchr( szDir, '\\' );
+    pszLeaf = ( pszLeaf != NULL ) ? ( pszLeaf + 1 ) : szDir;
+
+    size_t cbLeaf = strlen( pszLeaf );
+    if( cbLeaf < 6 ) return FALSE;
+    if( _strnicmp( pszLeaf, "7z", 2 ) != 0 ) return FALSE;
+    if( _stricmp( pszLeaf + ( cbLeaf - 4 ), ".tmp" ) != 0 ) return FALSE;
+
+    return TRUE;
+}
+
 //Build the value we want stored: the full path of the PET in quotes, so a path
 //containing spaces still launches correctly.
 //
@@ -146,11 +198,39 @@ BOOL NekoAutoStartRepair()
     //Nothing registered: the user has not asked for auto-start, leave it alone.
     if( lRes != ERROR_SUCCESS ) return FALSE;
 
+    //Only ever touch a plain string; anything else is not ours to interpret.
+    if( dwType != REG_SZ ) return FALSE;
+
+    //Do not adopt the folder we happen to be running from when that folder is
+    //a throw-away extraction directory: the Run entry would name a path that
+    //Windows deletes when this process exits, so auto-start would be dead by
+    //the next logon. The user can still enable it from an installed copy.
+    char szSelf[MAX_PATH];
+    DWORD dwSelf = GetModuleFileName( NULL, szSelf, MAX_PATH );
+    if( dwSelf == 0 || dwSelf >= MAX_PATH ) return FALSE;
+    if( IsThrowAwayDir( szSelf ) ) return FALSE;
+
     char szWant[MAX_PATH * 2];
     if( !BuildRunValue( szWant, sizeof(szWant) ) ) return FALSE;
 
-    //Already correct, or the user pointed it somewhere on purpose.
+    //Already correct: nothing to do.
     if( lstrcmpi( szStored, szWant ) == 0 ) return FALSE;
+
+    /* Decide whether the stored entry is actually BROKEN.
+
+       Repair exists to rescue an entry that went stale because the user moved
+       the folder. It must NOT repoint an entry that still resolves to a real
+       pet file: that would mean launching a copy from one folder silently
+       steals the auto-start entry from the copy the user installed, which is
+       exactly what happened when a test build was run from a scratch folder.
+       The one exception is a value that names the settings program, which is
+       never a valid auto-start target and is migrated. */
+    char szExisting[MAX_PATH];
+    if( UnquotePath( szStored, szExisting, sizeof(szExisting) ) )
+    {
+        if( FileExists( szExisting ) && !HasFileName( szExisting, NEKO_SETTINGS_EXE ) )
+            return FALSE;
+    }
 
     return NekoAutoStartSet( TRUE );
 }

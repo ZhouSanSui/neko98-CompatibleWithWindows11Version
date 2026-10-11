@@ -24,6 +24,18 @@
 #define AWAKE_TIME     3
 #define CLAW_TIME      10
 
+//How many consecutive ticks of REVERSING direction are tolerated before the
+//current target is judged unreachable and abandoned. A pet running normally
+//never reverses on two consecutive ticks, let alone this many, so the breaker is
+//silent in normal use; a cat caught in a boundary limit cycle reverses every
+//tick and is rescued in about NEKO_REV_LIMIT ticks (~2-4 s at the default tick).
+//Overridable at build time so the movement test can disable the safety net and
+//prove the DPI-independent aim is what fixes the bug, rather than the net
+//quietly papering over it.
+#ifndef NEKO_REV_LIMIT
+#define NEKO_REV_LIMIT 16
+#endif
+
 //external system variable
 extern HINSTANCE g_hInstance;
 
@@ -85,6 +97,12 @@ CNeko::CNeko( char* lpszName )
 	strcpy( m_szSndAwake, "" );
 	m_dwSndFrequency = 0;
     m_dwScale = 100;
+
+    //oscillation breaker state (see RunTowards): no heading recorded yet and no
+    //reversals counted, so the first tick can never look like an oscillation
+    m_nLastDirX = 0;
+    m_nLastDirY = 0;
+    m_nRevRun = 0;
 
 	//build configuration registry key
 	char szKey[1024];
@@ -296,10 +314,17 @@ void CNeko::RunTowards(int nX, int nY)
     m_nOldToX = m_nToX; m_nOldToY = m_nToY;
     m_nToX = nX; m_nToY = nY;
 
-	//calculate distance to target and set delta positions
+	//calculate distance to target and set delta positions.
+	//The arrival offsets use the pet's DPI-INDEPENDENT aim size, never the size
+	//it happens to be drawn at. On a mixed-DPI desktop the drawn size changes as
+	//the cat crosses a monitor boundary, so a size-dependent arrival point would
+	//move the goalpost exactly when the cat gets there: it would cross, the
+	//remaining distance would flip sign, and it would oscillate along the screen
+	//edge forever (a "stuck at the edge, running back and forth" bug).
     double dLargeX, dLargeY, dDoubleLength, dLength;
-    dLargeX = (double)(m_nToX - m_pPet->GetPosition().x - (int)m_pPet->GetSize().cx / 2); //stop in middle of cursor
-    dLargeY = (double)(m_nToY - m_pPet->GetPosition().y - (int)m_pPet->GetSize().cy + 1); //...and just above
+    SIZE sizeAim = m_pPet->GetAimSize();
+    dLargeX = (double)(m_nToX - m_pPet->GetPosition().x - (int)sizeAim.cx / 2); //stop in middle of cursor
+    dLargeY = (double)(m_nToY - m_pPet->GetPosition().y - (int)sizeAim.cy + 1); //...and just above
     dDoubleLength = dLargeX * dLargeX + dLargeY * dLargeY;
 
     if( dDoubleLength != 0.0 ) 
@@ -320,6 +345,45 @@ void CNeko::RunTowards(int nX, int nY)
     } 
     else //we're at the target - stop
 		m_nDX = m_nDY = 0;
+
+    //---- oscillation breaker (safety net) ----
+    //A pet that is running normally never reverses its heading two ticks in a
+    //row. A pet trapped against an unreachable target reverses EVERY tick. If
+    //that keeps up, the target is abandoned so the cat can never stay stuck
+    //running back and forth on a screen edge. This is a backstop for cases the
+    //DPI-independent aim above does not cover (future clamping rules, rounding
+    //at extreme scales, a target exactly on a boundary); in normal running the
+    //counter never gets past 1.
+    if( m_nToX != m_nOldToX || m_nToY != m_nOldToY )
+    {
+        //a new target: start counting from scratch
+        m_nRevRun = 0;
+        m_nLastDirX = m_nLastDirY = 0;
+    }
+
+    int nDirX = ( m_nDX > 0 ) ? 1 : ( ( m_nDX < 0 ) ? -1 : 0 );
+    int nDirY = ( m_nDY > 0 ) ? 1 : ( ( m_nDY < 0 ) ? -1 : 0 );
+    BOOL fReversed = ( ( nDirX != 0 && m_nLastDirX != 0 && nDirX != m_nLastDirX ) ||
+                       ( nDirY != 0 && m_nLastDirY != 0 && nDirY != m_nLastDirY ) );
+    if( fReversed ) m_nRevRun++; else m_nRevRun = 0;
+    m_nLastDirX = nDirX;
+    m_nLastDirY = nDirY;
+
+    if( m_nRevRun >= NEKO_REV_LIMIT )
+    {
+        //Give up on this target and come to rest where we stand. The target is
+        //retargeted onto the pet's own RESTING POINT (the spot at which the aim
+        //offsets above work out to zero) rather than onto its raw top-left
+        //corner, so the very next tick computes a zero delta, CalcDirection()
+        //turns that into STOP, and the cat sits down instead of wandering off.
+        m_nRevRun = 0;
+        m_nLastDirX = m_nLastDirY = 0;
+        m_nToX = m_pPet->GetPosition().x + (int)sizeAim.cx / 2;
+        m_nToY = m_pPet->GetPosition().y + (int)sizeAim.cy - 1;
+        m_nOldToX = m_nToX;
+        m_nOldToY = m_nToY;
+        m_nDX = m_nDY = 0;
+    }
 
     //increment animation counter
     if ( ++m_uTickCount >= MAX_TICK ) m_uTickCount = 0;
@@ -488,6 +552,55 @@ void CNeko::SetVisible( BOOL bShow )
 void CNeko::OnDisplayChange()
 {
     if( m_pPet ) m_pPet->OnDisplayChange();
+}
+
+
+POINT CNeko::GetPosition()
+{
+    POINT pt = {0, 0};
+    if( m_pPet ) pt = m_pPet->GetPosition();
+    return pt;
+}
+
+
+void CNeko::PlaceAndAim( int x, int y, int toX, int toY )
+{
+    if( !m_pPet ) return;
+
+    //put the cat where we were asked to and forget the previous aim so the very
+    //first tick is evaluated against the new geometry only
+    m_pPet->MoveTo( x, y );
+    m_nToX = m_nOldToX = toX;
+    m_nToY = m_nOldToY = toY;
+    m_nDX = m_nDY = 0;
+    m_nLastDirX = m_nLastDirY = 0;
+    m_nRevRun = 0;
+    m_nActionCount = 0;
+
+    //drop out of any sleeping/idle animation so the cat actually walks
+    SetState( U_MOVE );
+}
+
+
+int CNeko::GetReversalRun()
+{
+    return m_nRevRun;
+}
+
+
+SIZE CNeko::GetPetSize()
+{
+    SIZE s = {0, 0};
+    if( m_pPet ) s = m_pPet->GetSize();
+    return s;
+}
+
+
+SIZE CNeko::GetPetAimSize()
+{
+    SIZE s = {0, 0};
+    if( m_pPet ) s = m_pPet->GetAimSize();
+    return s;
 }
 
 BOOL CNeko::LoadImages()

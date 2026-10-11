@@ -49,6 +49,10 @@ public:
     //override base configuration
     virtual void SetImages( HICON* hIconTable, int nIcons );
 
+    //override base aim size: the user's zoom but NOT the per-monitor DPI scale,
+    //so the movement maths cannot oscillate at a mixed-DPI monitor boundary
+    virtual SIZE GetAimSize();
+
     //override base drawing (pure virtual in CPet)
     virtual void Draw( int nImage );
     virtual void Erase();

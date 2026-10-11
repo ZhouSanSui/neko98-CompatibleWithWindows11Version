@@ -510,6 +510,22 @@ void CTransparentPet::SetImages( HICON* hIconTable, int nIcons )
 }
 
 
+//The size used to decide when the cat has "arrived" at its target. This must NOT
+//include the per-monitor DPI factor: m_baseW/m_baseH is the icon size with only
+//the user's own zoom folded in, so the arrival point stays put no matter which
+//monitor the cat is standing on. Using the DPI-scaled size here is what used to
+//strand the cat on the boundary between two monitors of different DPI - the goal
+//line moved as the cat crossed it, so a target just past the seam was
+//unreachable and the cat ran back and forth along the edge forever.
+SIZE CTransparentPet::GetAimSize()
+{
+    SIZE s;
+    s.cx = m_baseW > 0 ? m_baseW : ( m_cw > 0 ? m_cw : 32 );
+    s.cy = m_baseH > 0 ? m_baseH : ( m_ch > 0 ? m_ch : 32 );
+    return s;
+}
+
+
 //Release the decoded cat sprites and the footprint sprite cache. Both are
 //DPI-dependent, so they are thrown away whenever the scale changes.
 void CTransparentPet::FreeSprites()

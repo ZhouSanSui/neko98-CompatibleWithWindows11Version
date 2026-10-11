@@ -95,8 +95,77 @@ static BOOL EndsWith( const char* pszPath, const char* pszName )
     return ( _strnicmp( p + ( a - b ), pszName, b ) == 0 );
 }
 
-int main()
+/* ------------------------------------------------------------------
+
+   Focused child mode: when this program is launched from inside a
+   throw-away extraction folder (7-Zip unpacks our installer into
+   "%TEMP%\7zXXXX.tmp" and deletes it on exit), Repair() must refuse to
+   adopt that path, or auto-start would point at a folder that no longer
+   exists by the next logon.
+
+   Run as:  test_autostart.exe --repair-in-throwaway <expectedValueBase64ish>
+   We keep it simple: the child stores a sentinel path itself, calls
+   Repair(), and exits 0 only when the sentinel survived untouched.
+
+   ------------------------------------------------------------------ */
+static int RunThrowAwayCheck()
 {
+    printf( "=== throw-away-folder repair check (child) ===\n" );
+
+    //save whatever the user had, so this check stays non-destructive too
+    char szSaved[1024];
+    DWORD dwSavedType = 0;
+    BOOL  bHadSaved = RawGet( szSaved, sizeof(szSaved), &dwSavedType );
+
+    char szSelf[MAX_PATH];
+    GetModuleFileName( NULL, szSelf, MAX_PATH );
+    printf( "running from: %s\n", szSelf );
+
+    //sanity: the parent is supposed to have placed us in a 7z*.tmp folder, so
+    //if this check ever runs anywhere else it proves nothing and must say so.
+    //The name that matters is the FOLDER's, not our own file name.
+    char szDir[MAX_PATH];
+    lstrcpyn( szDir, szSelf, MAX_PATH );
+    char* pSlash = strrchr( szDir, '\\' );
+    if( pSlash != NULL ) *pSlash = '\0';
+
+    const char* pszLeaf = strrchr( szDir, '\\' );
+    pszLeaf = pszLeaf ? ( pszLeaf + 1 ) : szDir;
+
+    BOOL bNamesThrowAway = ( _strnicmp( pszLeaf, "7z", 2 ) == 0 );
+
+    const char* pszSentinel = "\"C:\\NekoThrowAwaySentinel\\Neko98.exe\"";
+    RawSet( pszSentinel );
+
+    BOOL bRepaired = NekoAutoStartRepair();
+
+    char szNow[1024]; DWORD t = 0;
+    BOOL bGot = RawGet( szNow, sizeof(szNow), &t );
+
+    printf( "leaf='%s' throwaway=%d Repair()=%d now=%s\n",
+            pszLeaf, bNamesThrowAway ? 1 : 0, bRepaired ? 1 : 0,
+            bGot ? szNow : "(none)" );
+
+    CHECK( "child really runs from a 7z*.tmp folder", bNamesThrowAway != FALSE, pszLeaf );
+    CHECK( "Repair() refuses to adopt a throw-away extraction path",
+           bRepaired == FALSE, NULL );
+    CHECK( "the stored value was left untouched",
+           bGot && lstrcmpi( szNow, pszSentinel ) == 0, szNow );
+
+    //put the user's entry back before we exit
+    if( bHadSaved ) RawSet( szSaved );
+    else            RawDelete();
+
+    printf( "\n=== %s (%d failures, %d skipped) ===\n",
+            g_nFail ? "FAILED" : "ALL PASS", g_nFail, g_nSkip );
+    return g_nFail ? 2 : 0;
+}
+
+int main( int argc, char** argv )
+{
+    if( argc > 1 && strcmp( argv[1], "--repair-in-throwaway" ) == 0 )
+        return RunThrowAwayCheck();
+
     printf( "=== Neko98 auto-start test ===\n" );
 
     //---- save whatever the user already had, so this test is non-destructive
@@ -219,6 +288,65 @@ int main()
                bGot && lstrcmpi( szFixed, szWant ) == 0, buf );
         CHECK( "IsEnabled() true again after repair",
                NekoAutoStartIsEnabled() != FALSE, buf );
+
+        /* ---- Repair() must NOT steal a working entry ----
+
+           Repair exists to rescue a path that went stale. When the stored path
+           still resolves to a real pet file, the user has a working install, so
+           running a SECOND copy from somewhere else (a scratch folder, a test
+           build, or the throw-away directory the self-extracting installer
+           unpacks into) must leave that entry alone. Without this, launching
+           any copy would silently repoint auto-start at itself - and in the
+           installer case at a folder 7-Zip deletes on exit. */
+        {
+            char szAltDir[MAX_PATH];
+            lstrcpyn( szAltDir, szDir, MAX_PATH );
+            char* pSlash = strrchr( szAltDir, '\\' );
+            if( pSlash != NULL ) *( pSlash + 1 ) = '\0';
+            lstrcat( szAltDir, "neko_alt_install" );
+
+            CreateDirectory( szAltDir, NULL );
+
+            char szAltPet[MAX_PATH];
+            lstrcpyn( szAltPet, szAltDir, MAX_PATH );
+            lstrcat( szAltPet, "\\" );
+            lstrcat( szAltPet, NEKO_PET_EXE );
+
+            HANDLE hAlt = CreateFile( szAltPet, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                                      FILE_ATTRIBUTE_NORMAL, NULL );
+            if( hAlt != INVALID_HANDLE_VALUE )
+            {
+                CloseHandle( hAlt );
+
+                char szAltValue[MAX_PATH + 8];
+                wsprintf( szAltValue, "\"%s\"", szAltPet );
+                RawSet( szAltValue );
+
+                //It is a real pet file, but not the one beside us, so the
+                //settings checkbox must show "not this copy"...
+                CHECK( "an entry naming a DIFFERENT but real pet does not read as enabled",
+                       NekoAutoStartIsEnabled() == FALSE, szAltValue );
+
+                //...and Repair() must leave it pointing there, untouched.
+                BOOL bStole = NekoAutoStartRepair();
+
+                char szKept[1024]; DWORD t6 = 0;
+                BOOL bK = RawGet( szKept, sizeof(szKept), &t6 );
+                sprintf( buf, "Repair()=%d kept=%s", bStole ? 1 : 0,
+                         bK ? szKept : "(none)" );
+                CHECK( "Repair() does not hijack an entry that still points at a real pet",
+                       bStole == FALSE && bK && lstrcmpi( szKept, szAltValue ) == 0, buf );
+
+                DeleteFile( szAltPet );
+            }
+            else
+            {
+                SKIP( "Repair() does not hijack a working entry",
+                      "could not create an alternative pet file" );
+            }
+
+            RemoveDirectory( szAltDir );
+        }
 
         //---- a value planted at the settings program must not read as enabled,
         //---- and Repair() must migrate it to the pet ----

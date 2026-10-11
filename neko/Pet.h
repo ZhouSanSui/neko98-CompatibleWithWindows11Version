@@ -56,6 +56,17 @@ public:
 	inline POINT& GetOldPosition() { return m_ptOldPosition; };
     inline SIZE   GetSize()        { return m_sizeImage; };
 
+    //The size to use when deciding whether the cat has ARRIVED at a target.
+    //This must be DPI-INDEPENDENT. GetSize() returns the size the sprite is
+    //drawn at right now, and on a mixed-DPI desktop that changes the instant the
+    //cat crosses a monitor boundary. Deriving the arrival point from the current
+    //drawn size moves the "arrived" line every time the DPI changes, so a target
+    //just past such a boundary can never be reached: the cat crosses, the
+    //remaining distance flips sign, and it runs back and forth along the screen
+    //edge forever. CTransparentPet overrides this with its DPI-independent base
+    //size; for a plain pet the drawn size is already DPI-independent.
+    virtual SIZE GetAimSize() { return m_sizeImage; }
+
 protected:
 
 	//pure virtual functions
