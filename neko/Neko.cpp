@@ -554,6 +554,16 @@ void CNeko::OnDisplayChange()
     if( m_pPet ) m_pPet->OnDisplayChange();
 }
 
+void CNeko::SetMagnify( float fMagnify )
+{
+    if( m_pPet ) m_pPet->SetMagnify( fMagnify );
+}
+
+void CNeko::ForceShow()
+{
+    if( m_pPet ) m_pPet->ForceShow();
+}
+
 
 POINT CNeko::GetPosition()
 {

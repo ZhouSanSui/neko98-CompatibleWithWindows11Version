@@ -36,12 +36,17 @@ public:
     BOOL SetTip( HWND hWnd, UINT uID, LPCSTR szTip );
     BOOL SetIcon( HWND hWnd, HICON hIcon, UINT uID );
 
-    //The menu now also offers pause/hide, so it needs to know the current state.
-    //The two hint strings, when given, are the user's own hot keys rendered as
-    //text (e.g. "Ctrl+Alt+N") and are appended to the item labels so the
-    //shortcuts are discoverable without opening the settings dialog.
-    void ShowPopupMenu( HWND hWnd, BOOL bPaused, BOOL bHidden,
-                        LPCSTR szPauseHint = NULL, LPCSTR szHideHint = NULL );
+    //The menu now also offers proxy/pause/hide/magnify, so it needs to know the
+    //current state. bProxyOn reflects the SYSTEM proxy, which is checked rather
+    //than toggled blindly: the state outlives the program, so showing it avoids
+    //the user wondering which way the next press will go. The hint strings, when
+    //given, are the user's own hot keys rendered as text (e.g. "Ctrl+Alt+N") and
+    //are appended to the item labels so the shortcuts are discoverable without
+    //opening the settings dialog.
+    void ShowPopupMenu( HWND hWnd, BOOL bPaused, BOOL bHidden, BOOL bMagnified,
+                        BOOL bProxyOn,
+                        LPCSTR szPauseHint = NULL, LPCSTR szHideHint = NULL,
+                        LPCSTR szProxyHint = NULL );
 
     UINT GetCount() { return m_uIconCount; };
 

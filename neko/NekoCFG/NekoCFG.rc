@@ -48,8 +48,8 @@ IDI_TAB_EFFECTS         ICON    DISCARDABLE     "res\\tab_effects.ico"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 4,0,0,1
- PRODUCTVERSION 4,0,0,1
+ FILEVERSION 4,1,0,0
+ PRODUCTVERSION 4,1,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -67,14 +67,14 @@ BEGIN
             VALUE "Comments", "NekoCFG 4.0g (Chinese, Windows 11 build)\0"
             VALUE "CompanyName", "DHSoft\0"
             VALUE "FileDescription", "Neko Desktop Pet Configuration\0"
-            VALUE "FileVersion", "4.0.0.1\0"
+            VALUE "FileVersion", "4.1.0.0\0"
             VALUE "InternalName", "NekoCFG\0"
             VALUE "LegalCopyright", "Copyright (C) 1999 DHSoft\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "NekoCFG.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "Neko 配置程序\0"
-            VALUE "ProductVersion", "4.0.0.1\0"
+            VALUE "ProductVersion", "4.1.0.0\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -107,10 +107,10 @@ BEGIN
                     BS_AUTOCHECKBOX | WS_TABSTOP,15,133,115,10,0,HIDC_TASKBAR
     CONTROL         "开机自动启动(&T)",IDC_AUTOSTART,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,15,146,115,10,0,HIDC_AUTOSTART
-    LTEXT           "暂停(&J):",IDC_STATIC,15,161,45,9
+    LTEXT           "代理(&J):",IDC_STATIC,15,161,45,9
     CONTROL         "",IDC_HOTKEY,"msctls_hotkey32",WS_TABSTOP,
                     62,160,58,12,0,HIDC_HOTKEY
-    LTEXT           "隐藏(&W):",IDC_STATIC,15,176,45,9
+    LTEXT           "隐藏/缩放(&W):",IDC_STATIC,15,176,52,9
     CONTROL         "",IDC_HIDEHOTKEY,"msctls_hotkey32",WS_TABSTOP,
                     62,175,58,12,0,HIDC_HIDEHOTKEY
     PUSHBUTTON      "关于(&U)...",IDC_ABOUT,7,189,50,14,0,0,HIDC_ABOUT

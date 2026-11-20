@@ -34,6 +34,27 @@ public:
     //show or hide the layered window. TRUE = show, FALSE = hide.
     virtual void SetVisible( BOOL bShow ) {};
 
+    //Draw the pet at a multiple of its normal size (1.0 = normal). This is an
+    //extra magnification on top of both the user's zoom setting and the monitor
+    //DPI factor, so the same code works on any display.
+    //
+    //The default keeps the base class consistent on platforms that cannot do it
+    //by re-computing the image size, so a plain CPet also honours the request
+    //instead of silently ignoring it.
+    virtual void SetMagnify( float fMagnify );
+
+    //Make absolutely sure the pet is on screen RIGHT NOW. This is the
+    //"mandatory" half of showing the cat: it re-derives the geometry, forces the
+    //window back into the visible monitor area, re-applies the topmost state and
+    //re-composites the surface. A plain "ShowWindow()" is not enough, because a
+    //window can be visible=true while sitting off-screen, behind other windows,
+    //or holding a stale surface - all of which look exactly like "the program is
+    //running but the cat is not on the desktop".
+    virtual void ForceShow();
+
+    //multiplication factor applied on top of the configured size
+    inline float GetMagnify() { return m_fMagnify; };
+
     //Called when the desktop geometry changed (resolution change, monitor
     //hot-plug, colour-depth change) WITHOUT the configuration changing. The
     //default does nothing. CTransparentPet overrides it to re-read the virtual
@@ -86,6 +107,11 @@ protected:
 	POINT m_ptOldPosition;
 	SIZE  m_sizeImage;
 	float m_fScale;
+
+	//extra magnification requested by SetMagnify() (1.0 = normal size). Kept
+	//separate from m_fScale so the zoom slider and the "make it big" toggle
+	//cannot overwrite each other.
+	float m_fMagnify;
 
 	//unscaled size of the base icon, used to recompute m_sizeImage whenever
 	//the scale changes so the cached size can never disagree with m_fScale

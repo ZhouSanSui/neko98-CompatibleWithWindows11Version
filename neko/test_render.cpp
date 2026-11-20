@@ -111,11 +111,30 @@ static MaskInfo ReadMask( HICON hIcon )
 //on screen AND let the desktop show through its fully transparent ones. This is
 //exactly the pipeline that used to render nothing (alpha stayed 0) or a
 //background box (alpha stayed 255 everywhere).
+//Proves that the layered-window mechanism really composites: opaque pixels must
+//reach the screen, and alpha-0 pixels must NOT.
+//
+//History worth knowing, because this assertion used to flap: the original
+//version put a red opaque left half and an "alpha 0" right half whose colour
+//bytes were still (0,0,255). In premultiplied ARGB that is an ILLEGAL pixel
+//(each colour channel must be <= alpha), and the compositor's behaviour for it
+//is unspecified - it sometimes honoured the alpha and sometimes painted the red
+//anyway. That is why the reported count wandered between 0, 29, 863 and 1212
+//across runs on unchanged code.
+//
+//The test is now self-contained in two ways:
+//  * the transparent band is written as ALL ZERO, which is the only legal
+//    premultiplied representation of "fully transparent";
+//  * the window carries its own opaque GREEN reference band, so the transparent
+//    band can be judged without knowing what desktop content sits behind it
+//    (the previous version could be fooled by a red window under the corner).
+//Three bands, same window: red (opaque) | transparent | green (opaque).
 static int TestLayeredAlphaMechanism( int cw, int ch )
 {
     int nFail = 0;
 
-    const int W = 96, H = 96;
+    const int W = 144, H = 96;
+    const int BAND = W / 3;
     int px = GetSystemMetrics(SM_CXSCREEN) - W - 120;   //right side of primary
     int py = GetSystemMetrics(SM_CYSCREEN) - H - 160;
     if( px < 0 ) px = 100;
@@ -151,15 +170,27 @@ static int TestLayeredAlphaMechanism( int cw, int ch )
     HBITMAP old = (HBITMAP)SelectObject( mem, dib );
     BYTE* p = (BYTE*)bits;
 
-    //left half: opaque pure red (premultiplied red == BGR(0,0,255) alpha 255)
-    //right half: alpha 0 (must be fully invisible so the desktop shows through)
     for( int y = 0; y < H; y++ )
     {
         for( int x = 0; x < W; x++ )
         {
             BYTE* o = p + ((size_t)y * W + x) * 4;
-            if( x < W/2 ) { o[0] = 0; o[1] = 0; o[2] = 255; o[3] = 255; }
-            else          { o[0] = 0; o[1] = 0; o[2] = 255; o[3] = 0;   }
+
+            if( x < BAND )
+            {
+                //opaque red, premultiplied: (B,G,R,A) = (0,0,255,255)
+                o[0] = 0; o[1] = 0; o[2] = 255; o[3] = 255;
+            }
+            else if( x < BAND * 2 )
+            {
+                //fully transparent: every channel zero (the only legal form)
+                o[0] = 0; o[1] = 0; o[2] = 0; o[3] = 0;
+            }
+            else
+            {
+                //opaque green, premultiplied: (B,G,R,A) = (0,255,0,255)
+                o[0] = 0; o[1] = 255; o[2] = 0; o[3] = 255;
+            }
         }
     }
 
@@ -175,30 +206,43 @@ static int TestLayeredAlphaMechanism( int cw, int ch )
     //let the compositor flush
     for( int i = 0; i < 20; i++ ) { MSG m; while( PeekMessage(&m,NULL,0,0,PM_REMOVE) ) { TranslateMessage(&m); DispatchMessage(&m);} Sleep(20); }
 
-    //read the screen back: the red half must be red, the transparent half must
-    //NOT be red (it must show whatever was underneath)
-    int nRed = 0, nRedRight = 0;
+    int nRed = 0, nGreen = 0;
+    int nMidRed = 0, nMidGreen = 0;
     HDC screen2 = GetDC(NULL);
     for( int y = 10; y < H-10; y++ )
     {
-        for( int x = 10; x < W/2-10; x++ )
+        for( int x = 10; x < BAND-10; x++ )
         {
             COLORREF c = GetPixel( screen2, px + x, py + y );
             if( GetRValue(c) > 200 && GetGValue(c) < 60 && GetBValue(c) < 60 ) nRed++;
         }
-        for( int x = W/2+10; x < W-10; x++ )
+        for( int x = BAND+10; x < BAND*2-10; x++ )
         {
             COLORREF c = GetPixel( screen2, px + x, py + y );
-            if( GetRValue(c) > 200 && GetGValue(c) < 60 && GetBValue(c) < 60 ) nRedRight++;
+            if( GetRValue(c) > 200 && GetGValue(c) < 60 && GetBValue(c) < 60 ) nMidRed++;
+            if( GetRValue(c) < 60 && GetGValue(c) > 150 && GetBValue(c) < 60 ) nMidGreen++;
+        }
+        for( int x = BAND*2+10; x < W-10; x++ )
+        {
+            COLORREF c = GetPixel( screen2, px + x, py + y );
+            if( GetRValue(c) < 60 && GetGValue(c) > 200 && GetBValue(c) < 60 ) nGreen++;
         }
     }
     ReleaseDC( NULL, screen2 );
 
     char buf[256];
-    sprintf( buf, "opaque region red px=%d, alpha-0 region red px=%d", nRed, nRedRight );
+    sprintf( buf, "red band=%d green band=%d | transparent band red=%d green=%d",
+             nRed, nGreen, nMidRed, nMidGreen );
     printf( "     %s\n", buf );
-    CHECK( "UpdateLayeredWindow shows opaque pixels on screen", nRed > 1000, buf );
-    CHECK( "alpha-0 region is see-through (no background box)", nRedRight < 50, buf );
+
+    CHECK( "UpdateLayeredWindow shows opaque red pixels on screen", nRed > 1000, buf );
+    CHECK( "UpdateLayeredWindow shows opaque green pixels on screen", nGreen > 1000, buf );
+
+    //The decisive one: in the transparent band the window must not paint EITHER
+    //of its own opaque colours. If the alpha were being ignored, the band would
+    //show red or green; only real per-pixel transparency can produce neither.
+    CHECK( "alpha-0 band is see-through (no background box)",
+           nMidRed < 50 && nMidGreen < 50, buf );
 
     SelectObject( mem, old );
     DeleteDC( mem );
@@ -816,6 +860,162 @@ int main()
             CHECK( "seam: crossing to another-DPI monitor does not shift the cat sideways",
                    nSteps >= 10 && worst <= 1, buf );
         }
+    }
+
+    //---- ForceShow: the "process is running but the cat is not on screen" fix ----
+    //
+    //This is the decisive test for the reported failure. Each of the three real
+    //ways a pet can be alive and invisible is reproduced by hand, and ForceShow()
+    //must recover from every one of them. A plain ShowWindow() would fail all
+    //three, which is exactly why the bug existed.
+    {
+        CTestPet fs( FALSE );
+        fs.SetImages( hCat, nCat );
+
+        if( fs.Wnd() == NULL )
+        {
+            printf( "     ForceShow test skipped (no window)\n" );
+        }
+        else
+        {
+            int vw = GetSystemMetrics( SM_CXVIRTUALSCREEN );
+            int vh = GetSystemMetrics( SM_CYVIRTUALSCREEN );
+            int ox = GetSystemMetrics( SM_XVIRTUALSCREEN );
+            int oy = GetSystemMetrics( SM_YVIRTUALSCREEN );
+
+            //--- case 1: parked far outside every monitor ------------------
+            //This is what a stale position looks like after a resolution or
+            //monitor-layout change: the window is perfectly healthy, just not
+            //anywhere the user can see.
+            fs.Place( vw + 5000, vh + 5000 );
+            fs.Show( 0 );
+            fs.Paint();
+
+            SetWindowPos( fs.Wnd(), NULL, ox + vw + 4000, oy + vh + 4000, 0, 0,
+                          SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE );
+            RECT rcOff;
+            GetWindowRect( fs.Wnd(), &rcOff );
+            BOOL bWasOffScreen = ( rcOff.left >= ox + vw ) || ( rcOff.top >= oy + vh );
+
+            fs.ForceShow();
+
+            RECT rcOn;
+            GetWindowRect( fs.Wnd(), &rcOn );
+            BOOL bNowOnScreen = ( rcOn.left >= ox ) && ( rcOn.left < ox + vw ) &&
+                                ( rcOn.top  >= oy ) && ( rcOn.top  < oy + vh ) &&
+                                ( rcOn.right > rcOn.left ) && ( rcOn.bottom > rcOn.top );
+
+            sprintf( buf, "was off-screen=%d, now %d,%d %dx%d",
+                     bWasOffScreen, rcOn.left, rcOn.top,
+                     rcOn.right - rcOn.left, rcOn.bottom - rcOn.top );
+            printf( "     %s\n", buf );
+            CHECK( "ForceShow pulls a pet parked outside the desktop back on screen",
+                   bWasOffScreen && bNowOnScreen && IsWindowVisible( fs.Wnd() ), buf );
+
+            //--- case 2: hidden with a stale/empty surface ------------------
+            //A hidden window's layered content can be discarded by the
+            //compositor; coming back must rebuild it, not just Show.
+            fs.Place( 400, 300 );
+            fs.Show( 0 );
+            fs.Paint();
+
+            ShowWindow( fs.Wnd(), SW_HIDE );
+            BOOL bHidden = !IsWindowVisible( fs.Wnd() );
+
+            fs.ForceShow();
+
+            BOOL bVisible = IsWindowVisible( fs.Wnd() ) ? TRUE : FALSE;
+
+            //The surface must carry real content again (not an empty buffer).
+            int nLit = 0;
+            int sw = fs.SurfW(), sh = fs.SurfH();
+            if( fs.Bits() && sw > 0 && sh > 0 )
+                for( int i = 0; i < sw * sh; i++ )
+                    if( fs.Bits()[ (size_t)i * 4 + 3 ] ) nLit++;
+
+            sprintf( buf, "hidden=%d visible=%d lit=%d px of %d",
+                     bHidden, bVisible, nLit, sw * sh );
+            printf( "     %s\n", buf );
+            CHECK( "ForceShow restores a hidden pet AND rebuilds its surface",
+                   bHidden && bVisible && nLit > 0, buf );
+
+            //--- case 3: shrunken to nothing, as a WM_SIZE accident would ----
+            //A 0x0 (or 1x1) window is "visible" by every cheap check yet paints
+            //nothing usable, so the restore path must not trust visibility alone.
+            SetWindowPos( fs.Wnd(), NULL, 0, 0, 1, 1,
+                          SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE );
+
+            fs.ForceShow();
+
+            RECT rcSized;
+            GetWindowRect( fs.Wnd(), &rcSized );
+            int wSized = rcSized.right - rcSized.left;
+            int hSized = rcSized.bottom - rcSized.top;
+
+            sprintf( buf, "restored geometry %dx%d", wSized, hSized );
+            printf( "     %s\n", buf );
+            CHECK( "ForceShow restores a usable geometry after a collapse",
+                   wSized > 8 && hSized > 8 &&
+                   wSized <= fs.SurfW() + 8 && hSized <= fs.SurfH() + 8, buf );
+
+            //--- case 4: after all of the above, the pet is really drawn ------
+            int nLitFinal = 0;
+            int swf = fs.SurfW(), shf = fs.SurfH();
+            if( fs.Bits() && swf > 0 && shf > 0 )
+                for( int i = 0; i < swf * shf; i++ )
+                    if( fs.Bits()[ (size_t)i * 4 + 3 ] ) nLitFinal++;
+
+            sprintf( buf, "%d lit px after the whole rollback sequence", nLitFinal );
+            printf( "     %s\n", buf );
+            CHECK( "after ForceShow the pet still has drawable pixels", nLitFinal > 0, buf );
+        }
+    }
+
+    //---- the three-state hot key's magnification, measured on the pet itself ----
+    //
+    //The window rect is NOT a good way to measure this: the surface is the
+    //bounding box of cat+trail rounded up to a 64px multiple, so at 100% the
+    //64px floor dominates and a 3x sprite only grows the window 2x. The honest
+    //measurement is the sprite size the pet reports, which is what the drawing
+    //and the hit-testing actually use.
+    {
+        CTestPet mag( FALSE );
+        mag.SetImages( hCat, nCat );
+
+        int wNormal = mag.CatW();
+        int hNormal = mag.CatH();
+
+        mag.SetMagnify( 3.0f );
+        int wBig = mag.CatW();
+        int hBig = mag.CatH();
+
+        sprintf( buf, "normal %dx%d -> magnified %dx%d (%.2fx linear)",
+                 wNormal, hNormal, wBig, hBig,
+                 wNormal > 0 ? (double)wBig / (double)wNormal : 0.0 );
+        printf( "     %s\n", buf );
+        CHECK( "SetMagnify(3) triples the drawn sprite size",
+               wNormal > 0 && wBig >= (int)( wNormal * 2.5 ) &&
+               wBig <= (int)( wNormal * 3.5 ) && hBig >= (int)( hNormal * 2.5 ), buf );
+
+        //Leaving the magnified state must restore the original size EXACTLY, not
+        //"about right" - a compounding factor would show up here.
+        mag.SetMagnify( 1.0f );
+        sprintf( buf, "back to %dx%d after leaving the magnified state",
+                 mag.CatW(), mag.CatH() );
+        printf( "     %s\n", buf );
+        CHECK( "leaving the magnified state restores the exact original size",
+               mag.CatW() == wNormal && mag.CatH() == hNormal, buf );
+
+        //Cycling twice must not compound (this is the trap that made an early
+        //version of the feature grow by 3x on every press).
+        mag.SetMagnify( 3.0f );
+        mag.SetMagnify( 1.0f );
+        mag.SetMagnify( 3.0f );
+        sprintf( buf, "second cycle gives %dx%d (first cycle gave %dx%d)",
+                 mag.CatW(), mag.CatH(), wBig, hBig );
+        printf( "     %s\n", buf );
+        CHECK( "repeated magnification cycles do not compound",
+               mag.CatW() == wBig && mag.CatH() == hBig, buf );
     }
 
     //---- the on-screen mechanism itself ----

@@ -499,10 +499,16 @@ void CTransparentPet::SetImages( HICON* hIconTable, int nIcons )
     //the base class copies the icons and works out the unscaled image size
     CPet::SetImages( hIconTable, nIcons );
 
-    //forget any base size from a previous configuration; the DPI-aware base is
-    //the size CPet just computed (which already includes the user's zoom).
-    m_baseW = m_sizeImage.cx;
-    m_baseH = m_sizeImage.cy;
+    //Take the base size from the BASE class members rather than from
+    //m_sizeImage: m_sizeImage now also has the magnification folded in, and
+    //re-using it here would apply "make it big" a second time on every rebuild.
+    //Fold in ONLY the user's own zoom, so this stays the DPI-independent,
+    //magnification-independent base that both GetAimSize() and
+    //RebuildSpritesForScale() want.
+    m_baseW = int( CPet::m_baseW * CPet::m_fScale + 0.5f );
+    m_baseH = int( CPet::m_baseH * CPet::m_fScale + 0.5f );
+    if( m_baseW < 1 ) m_baseW = 32;
+    if( m_baseH < 1 ) m_baseH = 32;
 
     //build the sprites at the DPI of wherever the pet currently is
     float k = DpiScaleForPoint( m_ptPosition.x, m_ptPosition.y );
@@ -520,8 +526,20 @@ void CTransparentPet::SetImages( HICON* hIconTable, int nIcons )
 SIZE CTransparentPet::GetAimSize()
 {
     SIZE s;
-    s.cx = m_baseW > 0 ? m_baseW : ( m_cw > 0 ? m_cw : 32 );
-    s.cy = m_baseH > 0 ? m_baseH : ( m_ch > 0 ? m_ch : 32 );
+
+    //m_baseW/m_baseH is the icon size with only the user's own zoom folded in.
+    //The magnification IS included, because unlike the DPI factor it is a
+    //deliberate, one-off size change chosen by the user rather than something
+    //that silently flips as the cat walks across a monitor boundary - so it
+    //cannot reintroduce the moving-goal-line stall. Excluding it would make the
+    //magnified cat stop visibly off-centre from its target.
+    float m = m_fMagnify > 0.1f ? m_fMagnify : 1.0f;
+
+    s.cx = m_baseW > 0 ? (int)( m_baseW * m + 0.5f ) : ( m_cw > 0 ? m_cw : 32 );
+    s.cy = m_baseH > 0 ? (int)( m_baseH * m + 0.5f ) : ( m_ch > 0 ? m_ch : 32 );
+
+    if( s.cx < 1 ) s.cx = m_cw > 0 ? m_cw : 32;
+    if( s.cy < 1 ) s.cy = m_ch > 0 ? m_ch : 32;
     return s;
 }
 
@@ -567,6 +585,17 @@ BOOL CTransparentPet::RebuildSpritesForScale( float k )
     if( k < 1.0f ) k = 1.0f;
     if( k > 4.0f ) k = 4.0f;
 
+    //Remember the PURE DPI factor. Redraw() compares this against the current
+    //monitor's DPI to decide whether the sprites are stale, so it must never
+    //have the magnification folded in (otherwise every frame would look stale
+    //while magnified and the sprite set would be rebuilt continuously).
+    float kDpi = k;
+
+    //Apply the requested magnification on top of the DPI factor. Doing it here
+    //(rather than in the caller) means every path that rebuilds sprites - a DPI
+    //change, a zoom change, a resize - automatically keeps the magnified size.
+    k *= m_fMagnify;
+
     if( k != 1.0f )
     {
         w = (int)(w * k + 0.5f);
@@ -579,7 +608,7 @@ BOOL CTransparentPet::RebuildSpritesForScale( float k )
     m_sizeImage.cy = h;
     m_cw = w;
     m_ch = h;
-    m_fSpriteScale = k;
+    m_fSpriteScale = kDpi;
 
     EnsureSurface( w, h );
 
@@ -1235,6 +1264,121 @@ void CTransparentPet::SetVisible( BOOL bShow )
 
     ShowWindow( m_hWnd, bShow ? SW_SHOWNOACTIVATE : SW_HIDE );
     if( bShow ) Redraw();
+}
+
+
+//Change the drawn size. The sprites are rebuilt immediately so GetSize() and
+//the pixels agree from the very next tick, and Redraw() is forced because a
+//size change is also a geometry change (the surface must grow/shrink).
+void CTransparentPet::SetMagnify( float fMagnify )
+{
+    if( fMagnify < 0.1f ) fMagnify = 0.1f;
+    if( fMagnify > 10.0f ) fMagnify = 10.0f;
+
+    if( fMagnify == m_fMagnify ) return;
+
+    //let the base class keep the reported size consistent
+    CPet::SetMagnify( fMagnify );
+
+    if( !m_hWnd ) return;
+
+    //rebuild at the new size, keeping the current monitor's DPI factor
+    if( m_nIcons > 0 )
+    {
+        float k = DpiScaleForPoint( m_ptPosition.x, m_ptPosition.y );
+        RebuildSpritesForScale( k );
+
+        //A bigger cat may no longer fit where it was standing, so pull it back
+        //inside the desktop before compositing; otherwise the magnified cat
+        //could hang off the screen edge and look clipped.
+        int vw, vh;
+        NekoWorldSize( &vw, &vh );
+        if( vw > 0 && m_ptPosition.x + m_cw > vw ) m_ptPosition.x = vw - m_cw;
+        if( vh > 0 && m_ptPosition.y + m_ch > vh ) m_ptPosition.y = vh - m_ch;
+        if( m_ptPosition.x < 0 ) m_ptPosition.x = 0;
+        if( m_ptPosition.y < 0 ) m_ptPosition.y = 0;
+    }
+
+    Redraw();
+}
+
+
+//The mandatory "come back" path.
+//
+//The reported problem is "the process is running but the cat is not on the
+//desktop". A window can be in exactly that state while every cheap check says it
+//is fine: IsWindowVisible()==TRUE, WS_EX_TOPMOST set, non-zero size. The three
+//real ways it happens are
+//  1. the window sits outside every monitor (stale position after a resolution
+//     or monitor-layout change),
+//  2. the window lost the real Z-order race and is buried under another topmost
+//     window,
+//  3. the layered surface is stale/empty because nothing re-composited it.
+//SetVisible(TRUE) addresses none of those, so this method addresses all three
+//and then verifies the result instead of assuming it worked.
+void CTransparentPet::ForceShow()
+{
+    if( !m_hWnd ) return;
+
+    //--- 1. re-derive the desktop geometry ---------------------------------
+    int vw, vh;
+    NekoWorldSize( &vw, &vh );
+    if( vw > 0 && vh > 0 ) SetRect( &m_rcBounds, 0, 0, vw, vh );
+
+    //Pull the pet back inside the desktop. Use the CURRENT drawn size, and keep
+    //at least one pixel on screen even if the sprite is larger than the monitor
+    //(which would otherwise produce negative clamps and push it off-screen).
+    int cw = m_cw > 0 ? m_cw : 32;
+    int ch = m_ch > 0 ? m_ch : 32;
+    if( m_rcBounds.right > 0 )
+    {
+        int maxX = m_rcBounds.right - cw;
+        if( maxX < m_rcBounds.left ) maxX = m_rcBounds.left;
+        if( m_ptPosition.x > maxX ) m_ptPosition.x = maxX;
+        if( m_ptPosition.x < m_rcBounds.left ) m_ptPosition.x = m_rcBounds.left;
+    }
+    if( m_rcBounds.bottom > 0 )
+    {
+        int maxY = m_rcBounds.bottom - ch;
+        if( maxY < m_rcBounds.top ) maxY = m_rcBounds.top;
+        if( m_ptPosition.y > maxY ) m_ptPosition.y = maxY;
+        if( m_ptPosition.y < m_rcBounds.top ) m_ptPosition.y = m_rcBounds.top;
+    }
+
+    //--- 2. make the window exist and be visible ---------------------------
+    ShowWindow( m_hWnd, SW_SHOWNOACTIVATE );
+
+    //--- 3. re-assert the real Z-order -------------------------------------
+    //m_bWasTopmost is the renderer's memo of what it last applied; resetting it
+    //forces the next composite to re-issue SetWindowPos, which is what actually
+    //re-raises a window that lost the topmost race. SWP_NOACTIVATE keeps focus
+    //where the user put it.
+    m_bWasTopmost = m_bAlwaysOnTop ? FALSE : TRUE;
+    SetWindowPos( m_hWnd,
+                  m_bAlwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST,
+                  0, 0, 0, 0,
+                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER );
+    m_bWasTopmost = m_bAlwaysOnTop;
+
+    //--- 4. rebuild the surface if it is stale -----------------------------
+    //A hidden window's layered content can be dropped by the compositor, and a
+    //DPI change while hidden leaves the sprites at the wrong size, so force the
+    //sprite scale check to re-run and drop the surface.
+    DropSurface();
+    m_fSpriteScale = 0.0f;
+
+    //--- 5. composite ------------------------------------------------------
+    Redraw();
+
+    //--- 6. verify ----------------------------------------------------------
+    //If the window is still not visible after all of that, the only remaining
+    //explanation is that it was created on a desktop the user cannot see; make
+    //it visible again and composite once more rather than silently failing.
+    if( !IsWindowVisible( m_hWnd ) )
+    {
+        ShowWindow( m_hWnd, SW_SHOWNOACTIVATE );
+        Redraw();
+    }
 }
 
 

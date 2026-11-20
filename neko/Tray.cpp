@@ -125,8 +125,9 @@ static void MakeLabel( char* pszDst, size_t cbDst, LPCSTR szText, LPCSTR szHint 
     pszDst[cbDst - 1] = '\0';
 }
 
-void CTray::ShowPopupMenu( HWND hWnd, BOOL bPaused, BOOL bHidden,
-                           LPCSTR szPauseHint, LPCSTR szHideHint )
+void CTray::ShowPopupMenu( HWND hWnd, BOOL bPaused, BOOL bHidden, BOOL bMagnified,
+                           BOOL bProxyOn,
+                           LPCSTR szPauseHint, LPCSTR szHideHint, LPCSTR szProxyHint )
 {
     //get the mouse position
     POINT mouse;
@@ -136,15 +137,33 @@ void CTray::ShowPopupMenu( HWND hWnd, BOOL bPaused, BOOL bHidden,
     HMENU hMenu = CreatePopupMenu();
     if( hMenu == NULL ) return;
 
-    char szPause[96], szHide[96];
+    char szPause[96], szHide[96], szMagnify[96], szProxy[96];
+
+    //The proxy item shows the state it is IN (with a check mark) because the
+    //system proxy outlives the menu, unlike the pet's own transient states.
+    MakeLabel( szProxy, sizeof(szProxy),
+               bProxyOn ? "系统代理：已开启(&X)" : "系统代理：已关闭(&X)", szProxyHint );
 
     MakeLabel( szPause, sizeof(szPause), bPaused ? "继续(&C)" : "暂停(&P)", szPauseHint );
-    MakeLabel( szHide,  sizeof(szHide),  bHidden ? "显示小猫(&W)" : "隐藏小猫(&W)", szHideHint );
+
+    //The hide item describes the NEXT step of the three-state cycle, so the menu
+    //text and the hot key always agree about what pressing it will do.
+    const char* szHideText;
+    if( bHidden )          szHideText = "显示小猫(&W)";
+    else if( bMagnified )  szHideText = "隐藏小猫(&W)";
+    else                   szHideText = "放大小猫 300%(&W)";
+
+    MakeLabel( szHide, sizeof(szHide), szHideText, szHideHint );
+
+    MakeLabel( szMagnify, sizeof(szMagnify),
+               bMagnified ? "恢复正常大小(&M)" : "放大 300%(&M)", NULL );
 
     AppendMenu( hMenu, MF_STRING, ID_SETTINGS, "设置(&S)..." );
     AppendMenu( hMenu, MF_SEPARATOR, 0, NULL );
+    AppendMenu( hMenu, MF_STRING | ( bProxyOn ? MF_CHECKED : 0 ), ID_TRAY_PROXY, szProxy );
     AppendMenu( hMenu, MF_STRING, ID_TRAY_PAUSE, szPause );
     AppendMenu( hMenu, MF_STRING, ID_TRAY_HIDE,  szHide );
+    AppendMenu( hMenu, MF_STRING, ID_TRAY_MAGNIFY, szMagnify );
     AppendMenu( hMenu, MF_SEPARATOR, 0, NULL );
     AppendMenu( hMenu, MF_STRING, ID_EXIT,    "退出(&E)" );
     SetMenuDefaultItem( hMenu, ID_SETTINGS, FALSE );

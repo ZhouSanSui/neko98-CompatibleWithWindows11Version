@@ -25,6 +25,15 @@ public:
 	//show/hide the cat (forwards to the pet's own visibility handling)
 	void SetVisible( BOOL bShow );
 
+	//Draw the cat at a multiple of its normal size (1.0 = unchanged, 3.0 = the
+	//"make it big" state the hide hot key cycles through).
+	void SetMagnify( float fMagnify );
+
+	//Bring the cat back onto the desktop unconditionally: re-anchor it inside
+	//the current virtual screen, re-assert topmost, rebuild the layered surface
+	//and re-composite. Used for the mandatory restore step of the hide hot key.
+	void ForceShow();
+
 	//The desktop geometry changed but the configuration did not (screen
 	//resolution, monitor hot-plug, colour depth). Forwards to the pet so it can
 	//re-derive its surface without rebuilding the whole cat.

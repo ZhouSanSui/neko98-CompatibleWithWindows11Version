@@ -25,6 +25,7 @@ CPet::CPet()
 	m_sizeImage.cx = 0;
 	m_sizeImage.cy = 0;
     m_fScale = 1.0f;
+    m_fMagnify = 1.0f;
 
 	//base (unscaled) icon size - sane 32x32 default until SetImages() knows better
 	m_baseW = 32;
@@ -104,8 +105,8 @@ void CPet::SetImages( HICON* hIconTable, int nIcons )
 		DestroyImages();
 		m_baseW = 32;
 		m_baseH = 32;
-		m_sizeImage.cx = int( m_baseW * m_fScale + 0.5f );
-		m_sizeImage.cy = int( m_baseH * m_fScale + 0.5f );
+		m_sizeImage.cx = int( m_baseW * m_fScale * m_fMagnify + 0.5f );
+		m_sizeImage.cy = int( m_baseH * m_fScale * m_fMagnify + 0.5f );
 		return;
 	}
 
@@ -137,8 +138,8 @@ void CPet::SetImages( HICON* hIconTable, int nIcons )
     }
 
     //calculate scaled size from the unscaled base size
-	m_sizeImage.cx = int( m_baseW * m_fScale + 0.5f );
-	m_sizeImage.cy = int( m_baseH * m_fScale + 0.5f );
+	m_sizeImage.cx = int( m_baseW * m_fScale * m_fMagnify + 0.5f );
+	m_sizeImage.cy = int( m_baseH * m_fScale * m_fMagnify + 0.5f );
 }
 
 
@@ -227,7 +228,37 @@ void CPet::SetScale(float fScale)
     //(m_baseW/m_baseH still hold the 32x32 default, but m_sizeImage is 0).
     if( m_hIcons != NULL && m_nIcons > 0 )
     {
-        m_sizeImage.cx = int( m_baseW * m_fScale + 0.5f );
-        m_sizeImage.cy = int( m_baseH * m_fScale + 0.5f );
+        m_sizeImage.cx = int( m_baseW * m_fScale * m_fMagnify + 0.5f );
+        m_sizeImage.cy = int( m_baseH * m_fScale * m_fMagnify + 0.5f );
     }
+}
+
+
+//Magnify the drawn sprite. Derived classes that own a renderer (CTransparentPet)
+//override this to rebuild their sprites; this base implementation only keeps the
+//reported size consistent, so a caller can always read the truth back through
+//GetSize().
+void CPet::SetMagnify( float fMagnify )
+{
+    //guard against zero/negative so the pet can never collapse to nothing
+    if( fMagnify < 0.1f ) fMagnify = 0.1f;
+    if( fMagnify > 10.0f ) fMagnify = 10.0f;
+
+    if( fMagnify == m_fMagnify ) return;
+    m_fMagnify = fMagnify;
+
+    if( m_hIcons != NULL && m_nIcons > 0 )
+    {
+        m_sizeImage.cx = int( m_baseW * m_fScale * m_fMagnify + 0.5f );
+        m_sizeImage.cy = int( m_baseH * m_fScale * m_fMagnify + 0.5f );
+    }
+}
+
+
+//Base implementation of ForceShow: the only thing a plain pet can do is redraw.
+//CTransparentPet does the real work (re-anchor, un-cloak, re-assert topmost).
+void CPet::ForceShow()
+{
+    if( m_nLastIcon >= 0 )
+        SetImage( m_nLastIcon );
 }

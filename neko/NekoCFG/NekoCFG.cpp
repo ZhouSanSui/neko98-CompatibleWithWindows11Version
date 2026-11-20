@@ -259,7 +259,10 @@ void WINAPI NekoHelp( HWND hWnd, UINT uCommand, DWORD_PTR dwData )
                 "全局快捷键：点进输入框后直接按下想用的组合键即可，"
                 "必须包含 Ctrl / Alt / Shift / Win 中至少一个；"
                 "同一组合被别的程序占用时会被拒绝。\n"
-                "按一次快捷键 = 暂停或隐藏小猫，再按一次 = 恢复。\n"
+                "“代理”：按一下打开系统手动代理（192.168.10.210:7890），"
+                "再按一下关闭；已预先填好不走代理的地址列表。\n"
+                "“隐藏/缩放”：三个状态循环——正常 → 放大到 300% → 隐藏 → "
+                "强制唤回桌面并恢复正常大小。\n"
                 "\n"
                 "【显示 / 移动 / 声音 / 独立 / 效果】分别控制图标库、大小、速度、"
                 "灵敏度、提示音、动作方式和脚印。\n"
@@ -301,7 +304,7 @@ static BOOL WINAPI ApplyGlobalSettings( HWND hDlg )
     if( NekoHotkeyConflict( g_dwHotkey, g_dwHideHotkey ) )
     {
         MessageBox( hDlg,
-                    "“暂停/继续”和“隐藏/显示”不能使用同一个快捷键，请修改其中一个。",
+                    "“代理”和“隐藏/缩放”不能使用同一个快捷键，请修改其中一个。",
                     szWindowTitle, MB_ICONWARNING );
         return FALSE;
     }
@@ -321,11 +324,11 @@ static BOOL WINAPI ApplyGlobalSettings( HWND hDlg )
     //the key.
     if( g_dwHotkey != 0 && !NekoHotkeyIsUsable( g_dwHotkey ) )
         MessageBox( hDlg,
-                    "“暂停/继续”的快捷键无效：请至少使用 Ctrl、Alt、Shift 或 Win 中的一个，再配合一个普通按键。",
+                    "“代理”的快捷键无效：请至少使用 Ctrl、Alt、Shift 或 Win 中的一个，再配合一个普通按键。",
                     szWindowTitle, MB_ICONWARNING );
     else if( g_dwHideHotkey != 0 && !NekoHotkeyIsUsable( g_dwHideHotkey ) )
         MessageBox( hDlg,
-                    "“隐藏/显示”的快捷键无效：请至少使用 Ctrl、Alt、Shift 或 Win 中的一个，再配合一个普通按键。",
+                    "“隐藏/缩放”的快捷键无效：请至少使用 Ctrl、Alt、Shift 或 Win 中的一个，再配合一个普通按键。",
                     szWindowTitle, MB_ICONWARNING );
 
     return TRUE;

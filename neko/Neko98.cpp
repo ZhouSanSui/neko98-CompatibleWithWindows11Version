@@ -12,6 +12,7 @@
 #include "NekoSettings.h"
 #include "AutoStart.h"
 #include "Hotkey.h"
+#include "ProxyToggle.h"
 #include "NekoCommon.h"
 #include "resource.h"
 #include "Neko.h"
@@ -31,9 +32,16 @@ PNeko* g_NekoArray = NULL; //array of CNeko pointers
 DWORD g_dwSleepTime = 200;
 
 //Paused: the cats keep their position but stop moving. Hidden: the cats are not
-//drawn at all. Both are user choices and survive a restart.
+//drawn at all. Magnified: drawn at 300% so the user can find them. All three are
+//user choices; paused/hidden survive a restart, magnified is deliberately NOT
+//restored, because coming back from a restart at triple size would be startling.
 BOOL g_fPaused = FALSE;
 BOOL g_fHidden = FALSE;
+BOOL g_fMagnified = FALSE;
+
+//How much the "make it big" state multiplies the drawn size by. The user asked
+//for three times the normal size.
+#define NEKO_MAGNIFY_FACTOR 3.0f
 
 BOOL g_fNeedReinit = TRUE;
 
@@ -97,6 +105,7 @@ static void ApplyTrayState()
         if( g_fPaused && g_fHidden )   szTip = "Neko98 - 已暂停（已隐藏）";
         else if( g_fPaused )           szTip = "Neko98 - 已暂停";
         else if( g_fHidden )           szTip = "Neko98 - 已隐藏";
+        else if( g_fMagnified )        szTip = "Neko98 - 已放大 300%";
 
         if( Tray->GetCount() == 0 )
         {
@@ -120,9 +129,16 @@ static void ApplyTrayState()
 static void ApplyPetState( BOOL bPersist )
 {
     int i;
+    float fMagnify = g_fMagnified ? NEKO_MAGNIFY_FACTOR : 1.0f;
+
     for( i = 0; i < g_nNumCats; i++ )
     {
         if( g_NekoArray[i] == NULL ) continue;
+
+        //Size first, then visibility: resizing a hidden window is harmless, but
+        //showing one that is still at the old size would flash the wrong size
+        //for a frame.
+        g_NekoArray[i]->SetMagnify( fMagnify );
         g_NekoArray[i]->SetVisible( g_fHidden ? FALSE : TRUE );
     }
 
@@ -265,40 +281,88 @@ void LoadConfiguration()
 }
 
 
-/* HandlePauseHotkey - toggle pause/resume ****************************************/
-static void HandlePauseHotkey()
+/* HandleProxyHotkey - the first hot key now switches the Windows manual proxy ***/
+//
+//This key used to pause the cats. The user asked for it to control the system
+//proxy instead, so pausing moved to the tray menu (where it still lives) and the
+//key now flips the manual proxy on and off. The state is reported back through
+//the tray tool tip so the user gets feedback without opening Settings.
+static void HandleProxyHotkey()
 {
-    //While the cats are hidden, this key brings them back too: a user who reaches
-    //for either combination expects to see the cat again.
-    if( g_fHidden || g_fPaused )
+    BOOL bWas = ProxyIsEnabled();
+    BOOL bNow = ProxyToggle();
+
+    //Silent when the switch really moved; only complain when the registry write
+    //was refused, because otherwise a failing hot key is invisible.
+    if( bNow == bWas )
     {
+        MessageBox( NULL,
+                    "无法切换系统代理。\n请确认当前用户有权修改 Internet 设置。",
+                    "Neko98", MB_ICONWARNING | MB_TASKMODAL );
+    }
+
+    //Refresh the tool tip so the new proxy state is visible at a glance.
+    ApplyTrayState();
+}
+
+
+/* HandleHideHotkey - three-state cycle: normal -> magnified -> hidden -> normal ***/
+//
+//The user asked for one key that walks a cycle instead of a plain toggle:
+//   1st press  the cat grows to 300% (still on screen)
+//   2nd press  the cat disappears
+//   3rd press  the cat comes back at normal size, and MUST really be back
+//
+//The magnified step exists so the key is useful even when the cat is somewhere
+//behind a window: the first press makes it big enough to notice, and only the
+//second one hides it. The final step is deliberately the forceful one, because
+//the failure being guarded against is "the process is running but no cat is on
+//the desktop" - so coming back must not merely clear a flag, it must re-anchor
+//the window, re-assert topmost and re-composite.
+static void ForceShowPets();     //defined just below
+
+static void HandleHideHotkey()
+{
+    if( g_fHidden )
+    {
+        //---- hidden -> shown (the mandatory restore) -----------------------
         g_fHidden = FALSE;
         g_fPaused = FALSE;
+        g_fMagnified = FALSE;
+
+        ApplyPetState( TRUE );
+        ForceShowPets();
+        return;
     }
-    else
+
+    if( g_fMagnified )
     {
-        g_fPaused = TRUE;
+        //---- magnified -> hidden ------------------------------------------
+        //Leave the magnification flag alone so that coming back through the
+        //first branch restores normal size rather than re-entering the cycle
+        //half way through.
+        g_fHidden = TRUE;
+
+        ApplyPetState( TRUE );
+        return;
     }
+
+    //---- normal -> magnified ---------------------------------------------
+    g_fMagnified = TRUE;
+    g_fPaused = FALSE;
 
     ApplyPetState( TRUE );
 }
 
-/* HandleHideHotkey - toggle hidden (visible=false) *******************************/
-static void HandleHideHotkey()
+/* ForceShowPets - the "really bring it back" path ********************************/
+static void ForceShowPets()
 {
-    //Hiding is independent of pausing: the cat simply stops being drawn. Bringing
-    //it back clears the pause as well, so one press always yields a live cat.
-    if( g_fHidden )
+    int i;
+    for( i = 0; i < g_nNumCats; i++ )
     {
-        g_fHidden = FALSE;
-        g_fPaused = FALSE;
+        if( g_NekoArray[i] == NULL ) continue;
+        g_NekoArray[i]->ForceShow();
     }
-    else
-    {
-        g_fHidden = TRUE;
-    }
-
-    ApplyPetState( TRUE );
 }
 
 
@@ -332,13 +396,27 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
                     ExecuteConfigProcess();
                     break;
 
+                case ID_TRAY_PROXY:
+                    //Same helper as the hot key, so the menu and the key drive
+                    //exactly the same code path.
+                    HandleProxyHotkey();
+                    break;
+
                 case ID_TRAY_PAUSE:
                     g_fPaused = g_fPaused ? FALSE : TRUE;
                     ApplyPetState( TRUE );
                     break;
 
                 case ID_TRAY_HIDE:
-                    g_fHidden = g_fHidden ? FALSE : TRUE;
+                    //Route the tray item through the SAME state machine as the
+                    //hot key so the two can never drift apart: menu and key both
+                    //walk normal -> magnified -> hidden -> normal.
+                    HandleHideHotkey();
+                    break;
+
+                case ID_TRAY_MAGNIFY:
+                    g_fMagnified = g_fMagnified ? FALSE : TRUE;
+                    if( g_fMagnified ) g_fPaused = FALSE;
                     ApplyPetState( TRUE );
                     break;
 
@@ -349,7 +427,10 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
             break;
 
         case WM_HOTKEY:
-            if( wParam == NEKO_HOTKEY_ID )           HandlePauseHotkey();
+            //The first combination used to pause the cats; it now switches the
+            //Windows manual proxy, as asked. Pausing stayed available in the tray
+            //menu. The second combination still runs the hide/show cycle.
+            if( wParam == NEKO_HOTKEY_ID )           HandleProxyHotkey();
             else if( wParam == NEKO_HIDE_HOTKEY_ID ) HandleHideHotkey();
             break;
 
@@ -358,7 +439,9 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
             //actually visible again instead of leaving the user with nothing.
             g_fHidden = FALSE;
             g_fPaused = FALSE;
+            g_fMagnified = FALSE;
             ApplyPetState( TRUE );
+            ForceShowPets();
             break;
 
         //A display-mode change (resolution, monitor hot-plug) alters the desktop
@@ -400,10 +483,15 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
                     //displayed next to the items they trigger
                     if( Tray != NULL )
                     {
-                        char szPauseHint[64], szHideHint[64];
-                        NekoHotkeyFormat( g_dwHotkey,     szPauseHint, sizeof(szPauseHint) );
+                        char szPauseHint[64], szHideHint[64], szProxyHint[64];
+                        NekoHotkeyFormat( g_dwHotkey,     szProxyHint, sizeof(szProxyHint) );
                         NekoHotkeyFormat( g_dwHideHotkey, szHideHint,  sizeof(szHideHint) );
-                        Tray->ShowPopupMenu( hWnd, g_fPaused, g_fHidden, szPauseHint, szHideHint );
+                        //the pause action has no hot key any more - it moved to the
+                        //menu when the first combination became the proxy switch
+                        szPauseHint[0] = '\0';
+                        Tray->ShowPopupMenu( hWnd, g_fPaused, g_fHidden, g_fMagnified,
+                                             ProxyIsEnabled(),
+                                             szPauseHint, szHideHint, szProxyHint );
                     }
                     break;
             }

@@ -63,6 +63,16 @@ public:
     //override base visibility: show/hide our own window
     virtual void SetVisible( BOOL bShow );
 
+    //override base magnification: rebuild the sprites at the new size
+    virtual void SetMagnify( float fMagnify );
+
+    //Force the pet onto the screen. Unlike SetVisible(TRUE) this does not trust
+    //the window state at all: it re-derives the geometry, pulls the window back
+    //inside the monitor that actually exists now, re-asserts topmost so it
+    //cannot stay buried, and then re-composites. This is the "mandatory" part of
+    //bringing the cat back.
+    virtual void ForceShow();
+
     //geometry-only refresh (resolution change / monitor hot-plug): keeps the
     //same icons and window, just re-clamps to the new virtual desktop.
     virtual void OnDisplayChange();

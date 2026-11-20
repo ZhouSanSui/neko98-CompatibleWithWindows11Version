@@ -10,6 +10,8 @@
 #define ID_TIMER_NEKOUPDATE             103
 #define ID_TRAY_PAUSE                   105
 #define ID_TRAY_HIDE                    106
+#define ID_TRAY_MAGNIFY                 107
+#define ID_TRAY_PROXY                   108
 #define IDI_UPRIGHT1                    104
 #define ID_TIMER_NEKO                   104
 #define IDI_UPRIGHT2                    105

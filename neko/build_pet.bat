@@ -54,9 +54,11 @@ if errorlevel 1 goto :fail
 if errorlevel 1 goto :fail
 %MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c Hotkey.cpp -o Hotkey.o
 if errorlevel 1 goto :fail
+%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c ProxyToggle.cpp -o ProxyToggle.o
+if errorlevel 1 goto :fail
 
 rem ---- link: -specs removes gcc's default manifest; manifest_pet.o is the only one ----
-%MINGW%\g++.exe -specs=no_manifest.spec -static -static-libgcc -static-libstdc++ -O2 -mwindows -o Neko98.exe Neko98.o Neko.o Pet.o TransparentPet.o Tray.o NekoSettings.o AutoStart.o Hotkey.o Neko95.o manifest_pet.o -lcomctl32 -luser32 -lgdi32 -lshell32 -lwinmm -lgdiplus -lwtsapi32
+%MINGW%\g++.exe -specs=no_manifest.spec -static -static-libgcc -static-libstdc++ -O2 -mwindows -o Neko98.exe Neko98.o Neko.o Pet.o TransparentPet.o Tray.o NekoSettings.o AutoStart.o Hotkey.o ProxyToggle.o Neko95.o manifest_pet.o -lcomctl32 -luser32 -lgdi32 -lshell32 -lwinmm -lgdiplus -lwtsapi32 -lwininet
 if errorlevel 1 goto :fail
 
 echo LINK_OK
