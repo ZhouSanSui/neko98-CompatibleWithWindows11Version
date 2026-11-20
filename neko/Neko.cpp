@@ -89,6 +89,9 @@ CNeko::CNeko( char* lpszName )
     *m_szFootprintLibname = '\0';
     *m_szLibname = '\0';
     m_bFootprints = FALSE;
+    //Off until Neko98 tells us the system proxy is on. Deliberately not persisted:
+    //it is derived from live proxy state on every start, never a user setting.
+    m_bFootprintHighlight = FALSE;
 
 	strcpy( m_szSndIdle1, "" );
 	strcpy( m_szSndIdle2, "" );
@@ -484,10 +487,17 @@ void CNeko::RunTowards(int nX, int nY)
                     }
                     if( iFpAnim != -1 )
                     {
+                        //The cat alternates two footprints per step (see
+                        //m_uTickCount&1 below), which is exactly what gives us a
+                        //natural "one side / other side" split: when the
+                        //proxy-on cue is active, one of the two alternations is
+                        //painted white.
+                        BOOL bWhite = ( m_bFootprintHighlight && ( m_uTickCount & 1 ) ) ? TRUE : FALSE;
+
                         if( m_uTickCount & 1 )
-                            m_pPet->DrawOnTarget( nX-(m_nDY/2), nY, m_hIconFootprints[iFpAnim] );
+                            m_pPet->DrawOnTargetEx( nX-(m_nDY/2), nY, m_hIconFootprints[iFpAnim], bWhite );
                         else
-                            m_pPet->DrawOnTarget( nX, nY-(m_nDX/2), m_hIconFootprints[iFpAnim] );
+                            m_pPet->DrawOnTargetEx( nX, nY-(m_nDX/2), m_hIconFootprints[iFpAnim], bWhite );
                     }
                 }
             }
@@ -562,6 +572,14 @@ void CNeko::SetMagnify( float fMagnify )
 void CNeko::ForceShow()
 {
     if( m_pPet ) m_pPet->ForceShow();
+}
+
+void CNeko::SetFootprintHighlight( BOOL bWhite )
+{
+    //Only flagged here: the colour is applied as each new footprint is dropped,
+    //so switching the cue never repaints or recolours the trail already fading
+    //out - the change simply starts with the next step the cat takes.
+    m_bFootprintHighlight = bWhite ? TRUE : FALSE;
 }
 
 

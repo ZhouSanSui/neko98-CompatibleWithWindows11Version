@@ -125,6 +125,18 @@ static void ApplyTrayState()
     }
 }
 
+/* ApplyFootprintHint - one side of the trail turns white while the proxy is on ***/
+//Reads the LIVE proxy state rather than remembering it, because the user can also
+//change it from Windows Settings or another program, and a stale hint would then
+//claim the proxy is on when it is not.
+static void ApplyFootprintHint()
+{
+    BOOL bOn = ProxyIsEnabled();
+
+    for( int i = 0; i < g_nNumCats; i++ )
+        if( g_NekoArray[i] != NULL ) g_NekoArray[i]->SetFootprintHighlight( bOn );
+}
+
 /* ApplyPetState - show, hide or pause every cat and persist the choice *********/
 static void ApplyPetState( BOOL bPersist )
 {
@@ -153,6 +165,7 @@ static void ApplyPetState( BOOL bPersist )
     }
 
     ApplyTrayState();
+    ApplyFootprintHint();
 }
 
 /* LoadConfiguration - reloads the program configuration *******************************/
@@ -303,6 +316,12 @@ static void HandleProxyHotkey()
 
     //Refresh the tool tip so the new proxy state is visible at a glance.
     ApplyTrayState();
+
+    //Footprints are the second, in-world cue: with the proxy on, one side of the
+    //trail turns white. Done here (and not only in ApplyPetState) so the change
+    //takes effect on the very next step instead of waiting for another state
+    //change to trigger a refresh.
+    ApplyFootprintHint();
 }
 
 

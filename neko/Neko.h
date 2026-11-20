@@ -39,6 +39,12 @@ public:
 	//re-derive its surface without rebuilding the whole cat.
 	void OnDisplayChange();
 
+	//Paint one side of the footprint trail white (the "proxy is on" cue).
+	//The cat already alternates two footprints per step, so "one side" means one
+	//of those two alternations - the trail stays readable and turning the cue on
+	//or off never disturbs the trail that is already fading.
+	void SetFootprintHighlight( BOOL bWhite );
+
 	//Current position of the cat in 0-based pet-world coordinates. Exposed for
 	//diagnostics and for the movement unit test.
 	POINT GetPosition();
@@ -84,6 +90,11 @@ protected:
     int m_Action;
     int m_nActionCount;
     int m_nActionX, m_nActionY, m_nActionDX, m_nActionDY;
+
+    //When TRUE, one of the two alternating footprints is painted white. Used to
+    //show that the system proxy is currently on, without adding a second overlay
+    //window or any new UI: the cue rides on the trail the cat already leaves.
+    BOOL m_bFootprintHighlight;
 
     //Oscillation breaker. Even with a DPI-independent aim size, some unforeseen
     //combination of clamping, rounding and a target sitting exactly on the

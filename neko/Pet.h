@@ -30,6 +30,17 @@ public:
 
     virtual void DrawOnTarget( int x, int y, HICON hIcon ) {}; //no default implementation
 
+    //Same as DrawOnTarget, plus "should this mark be drawn white?".
+    //The default forwards to DrawOnTarget so a renderer that does not care about
+    //colour keeps working unchanged; CTransparentPet overrides it to tint the
+    //sprite. Added for the proxy status hint: the cat alternates left/right
+    //footprints, so whitening exactly one of the two alternations gives a
+    //readable "proxy is on" cue using the trail the cat already leaves.
+    virtual void DrawOnTargetEx( int x, int y, HICON hIcon, BOOL bWhite )
+    {
+        DrawOnTarget( x, y, hIcon );
+    };
+
     //show/hide the pet. No-op here; CTransparentPet overrides it to actually
     //show or hide the layered window. TRUE = show, FALSE = hide.
     virtual void SetVisible( BOOL bShow ) {};

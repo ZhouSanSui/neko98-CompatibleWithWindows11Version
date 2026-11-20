@@ -59,6 +59,7 @@ public:
 
     //override target drawing -> footprints
     virtual void DrawOnTarget( int x, int y, HICON hIcon );
+    virtual void DrawOnTargetEx( int x, int y, HICON hIcon, BOOL bWhite );
 
     //override base visibility: show/hide our own window
     virtual void SetVisible( BOOL bShow );
@@ -105,6 +106,10 @@ protected:
         //timer compares it against the current value and skips a composite when
         //nothing has crossed an alpha step yet.
         BYTE  bAlpha;
+        //Whiten this mark when it is composited (proxy-is-on cue). Stored per
+        //footprint rather than read at paint time so that turning the proxy off
+        //does not retro-actively repaint the trail that is already on screen.
+        BOOL  bWhite;
     };
 
     //window plumbing
@@ -116,6 +121,10 @@ protected:
     //rendering helpers
     HBITMAP BuildARGB( HICON hIcon, int w, int h, BYTE** ppBits );
     SPRITE* GetSprite( HICON hIcon, int w, int h );
+    //Returns a white-tinted copy of the icon's sprite. Cached separately from the
+    //normal sprite cache so a colour change never has to rebuild the sprite and
+    //the two variants can coexist for the length of the fade.
+    SPRITE* GetWhiteSprite( HICON hIcon, int w, int h );
     void    BlendSprite( int dx, int dy, BYTE* pSrc, int sw, int sh, int alphaMul );
     void    Redraw();
     //Fade-timer entry point: like Redraw(), but it first checks whether any
@@ -152,6 +161,12 @@ protected:
 
     SPRITE    m_cache[16];
     int       m_ncache;
+
+    //White-tinted variants of the footprint sprites, kept in their own cache so
+    //toggling the proxy colour never invalidates the normal ones and both can be
+    //alive at the same time while a two-coloured trail fades out.
+    SPRITE    m_whiteCache[16];
+    int       m_nWhiteCache;
 
     int       m_nCurrentImage;
     BOOL      m_bFadeTimer;

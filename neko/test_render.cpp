@@ -53,6 +53,15 @@ public:
     void  BatchBegin()    { BeginDraw(); }
     void  BatchEnd()      { FlushDraw(); }
     void  DropAt( int x, int y, HICON h ) { DrawOnTarget( x, y, h ); }
+    void  DropAtEx( int x, int y, HICON h, BOOL bWhite ) { DrawOnTargetEx( x, y, h, bWhite ); }
+    //Is the Nth stored footprint flagged as white?
+    BOOL  FpIsWhite( int i ) { return ( i >= 0 && i < m_nfp ) ? m_fp[i].bWhite : FALSE; }
+    //Average colour of the lit pixels of a footprint sprite, sampled off the
+    //white cache, to prove the tint is really applied and not just flagged.
+    void  WhiteSpriteAvg( HICON h, int w, int hh, int* pr, int* pg, int* pb );
+    //Total colour of the composited surface: distinguishes a white trail from a
+    //dark one without caring where on the surface the marks landed.
+    void  SurfaceColorSum( long* pr, long* pg, long* pb );
     BOOL  FadeTick()      { return RedrawForFade(); }
     void  DisplayChange(){ OnDisplayChange(); }
 
@@ -68,7 +77,41 @@ public:
     }
 };
 
+//Out-of-line bodies for the two helpers declared above. They live here because
+//they need the nested SPRITE type, which is protected in the base class.
+void CTestPet::WhiteSpriteAvg( HICON h, int w, int hh, int* pr, int* pg, int* pb )
+{
+    *pr = *pg = *pb = 0;
+    SPRITE* s = GetWhiteSprite( h, w, hh );
+    if( !s || !s->pBits ) return;
+
+    int n = 0;
+    long sr = 0, sg = 0, sb = 0;
+    for( int i = 0; i < w * hh; i++ )
+    {
+        BYTE* p = s->pBits + (size_t)i * 4;
+        if( p[3] == 0 ) continue;           //ignore the transparent surround
+        sb += p[0]; sg += p[1]; sr += p[2];
+        n++;
+    }
+    if( n > 0 ) { *pr = (int)(sr/n); *pg = (int)(sg/n); *pb = (int)(sb/n); }
+}
+
+void CTestPet::SurfaceColorSum( long* pr, long* pg, long* pb )
+{
+    *pr = *pg = *pb = 0;
+    if( !m_pBits ) return;
+    long n = (long)m_surfW * m_surfH;
+    for( long i = 0; i < n; i++ )
+    {
+        BYTE* p = m_pBits + (size_t)i * 4;
+        if( p[3] == 0 ) continue;
+        *pb += p[0]; *pg += p[1]; *pr += p[2];
+    }
+}
+
 static int g_nFail = 0;
+
 static void CHECK( const char* what, BOOL ok, const char* detail )
 {
     printf( "[%s] %-46s %s\n", ok ? "PASS" : "FAIL", what, detail ? detail : "" );
@@ -1016,6 +1059,88 @@ int main()
         printf( "     %s\n", buf );
         CHECK( "repeated magnification cycles do not compound",
                mag.CatW() == wBig && mag.CatH() == hBig, buf );
+    }
+
+    //---- white footprint cue (proxy status) ----
+    //The proxy-on hint paints ONE of the two alternating footprints white. Two
+    //things have to be true: the flag has to survive into the stored footprint,
+    //and the white sprite must really be white (premultiplied: R=G=B=A) while
+    //keeping the paw's original alpha, otherwise the cue would either not show or
+    //would turn the mark into a solid blob.
+    {
+        CTestPet wp( FALSE );
+        wp.SetImages( hCat, nCat );
+        wp.Place( 200, 200 );
+        wp.Show( 0 );
+        wp.Paint();
+
+        int w = wp.CatW(), h = wp.CatH();
+
+        //--- the flag is recorded per footprint ---
+        wp.DropAtEx( 210, 210, hFp[0], FALSE );
+        wp.DropAtEx( 220, 220, hFp[0], TRUE );
+
+        int nfp = wp.Nfp();
+        BOOL bLastNormal = ( nfp >= 2 ) ? ( wp.FpIsWhite( nfp - 2 ) == FALSE ) : FALSE;
+        BOOL bLastWhite  = ( nfp >= 1 ) ? ( wp.FpIsWhite( nfp - 1 ) == TRUE  ) : FALSE;
+
+        sprintf( buf, "%d footprints, second-to-last white=%d, last white=%d",
+                 nfp, (int)!bLastNormal, (int)bLastWhite );
+        printf( "     %s\n", buf );
+        CHECK( "a white footprint is flagged and a normal one is not",
+               bLastNormal && bLastWhite, buf );
+
+        //--- the white sprite really is white, at the original coverage ---
+        int wr = 0, wg = 0, wb = 0;
+        wp.WhiteSpriteAvg( hFp[0], w, h, &wr, &wg, &wb );
+        sprintf( buf, "white sprite avg rgb=(%d,%d,%d)", wr, wg, wb );
+        printf( "     %s\n", buf );
+        //Premultiplied white means every lit pixel has R==G==B; averaging over the
+        //paw only (transparent pixels skipped) must therefore be neutral grey and
+        //clearly brighter than the icon's original dark paw.
+        CHECK( "the white sprite is neutral (R==G==B)",
+               wr > 0 && wr == wg && wg == wb, buf );
+        CHECK( "the white sprite is actually bright", wr >= 128, buf );
+
+        //--- compositing a white mark brightens the surface ---
+        //Compare the same footfall drawn both ways: the white one must contribute
+        //more red energy than the normal one, which is the whole point of the cue.
+        wp.QuiesceFade();
+        wp.Paint();
+        long r0 = 0, g0 = 0, b0 = 0;
+        wp.SurfaceColorSum( &r0, &g0, &b0 );
+
+        wp.DropAtEx( 240, 240, hFp[0], FALSE );
+        wp.Paint();
+        long r1 = 0, g1 = 0, b1 = 0;
+        wp.SurfaceColorSum( &r1, &g1, &b1 );
+
+        wp.DropAtEx( 250, 250, hFp[0], TRUE );
+        wp.Paint();
+        long r2 = 0, g2 = 0, b2 = 0;
+        wp.SurfaceColorSum( &r2, &g2, &b2 );
+
+        long normalGain = r1 - r0;      //what one coloured paw contributes
+        long whiteGain  = r2 - r1;      //what one white paw contributes
+        sprintf( buf, "coloured paw red +=%ld, white paw red +=%ld",
+                 normalGain, whiteGain );
+        printf( "     %s\n", buf );
+        CHECK( "a white footprint paints more light than a coloured one",
+               whiteGain > normalGain, buf );
+
+        //--- switching the cue back off must not touch the trail already fading ---
+        //The colour is stored per footprint, so this is structural rather than a
+        //special case; assert it anyway because a regression here would look like
+        //footprints flickering between colours as they age.
+        int nWhiteBefore = 0, nWhiteAfter = 0;
+        for( int i = 0; i < wp.Nfp(); i++ ) if( wp.FpIsWhite( i ) ) nWhiteBefore++;
+        wp.Paint();                     //a repaint with no new footfall
+        for( int i = 0; i < wp.Nfp(); i++ ) if( wp.FpIsWhite( i ) ) nWhiteAfter++;
+        sprintf( buf, "%d white marks before a repaint, %d after",
+                 nWhiteBefore, nWhiteAfter );
+        printf( "     %s\n", buf );
+        CHECK( "repainting does not recolour an existing trail",
+               nWhiteBefore > 0 && nWhiteAfter == nWhiteBefore, buf );
     }
 
     //---- the on-screen mechanism itself ----

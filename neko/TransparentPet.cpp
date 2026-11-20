@@ -218,6 +218,7 @@ CTransparentPet::CTransparentPet( BOOL bAlwaysOnTop )
     m_nCatSprites = 0;
     m_nfp         = 0;
     m_ncache      = 0;
+    m_nWhiteCache = 0;
     m_nCurrentImage = -1;
     m_bFadeTimer  = FALSE;
     m_bAlwaysOnTop = bAlwaysOnTop ? TRUE : FALSE;
@@ -565,6 +566,14 @@ void CTransparentPet::FreeSprites()
         memset( &m_cache[i], 0, sizeof(m_cache[i]) );
     }
     m_ncache = 0;
+    //The white variants are DPI-dependent in exactly the same way, so they must
+    //be dropped with the rest or the next redraw would blend a stale-size sprite.
+    for( int i = 0; i < m_nWhiteCache; i++ )
+    {
+        if( m_whiteCache[i].hBmp ) DeleteObject( m_whiteCache[i].hBmp );
+        memset( &m_whiteCache[i], 0, sizeof(m_whiteCache[i]) );
+    }
+    m_nWhiteCache = 0;
 }
 
 
@@ -799,6 +808,64 @@ CTransparentPet::SPRITE* CTransparentPet::GetSprite( HICON hIcon, int w, int h )
 //////////////////////////////////////////////////////////////////////
 // Compositing
 //////////////////////////////////////////////////////////////////////
+
+//White-tinted copy of an icon's sprite, used for the "proxy is on" footprint cue.
+//
+//The sprite is premultiplied ARGB, which is exactly what makes whitening cheap
+//and exact: a premultiplied pixel of a white shape at coverage a is (a,a,a,a).
+//So setting R=G=B=A turns any pixel into pure white at its ORIGINAL coverage,
+//which keeps the paw shape, its anti-aliased edges and the AND-mask-derived
+//alpha completely intact. Overwriting the colour with 255 instead would flatten
+//the edges into a hard-edged blob and would also break the premultiplied
+//invariant (colour must never exceed alpha), which is precisely the class of bug
+//that once made transparent pixels composite as red.
+CTransparentPet::SPRITE* CTransparentPet::GetWhiteSprite( HICON hIcon, int w, int h )
+{
+    for( int i = 0; i < m_nWhiteCache; i++ )
+        if( m_whiteCache[i].hIcon == hIcon &&
+            m_whiteCache[i].w == w && m_whiteCache[i].h == h )
+            return &m_whiteCache[i];
+
+    if( m_nWhiteCache >= 16 )
+    {
+        if( m_whiteCache[0].hBmp ) DeleteObject( m_whiteCache[0].hBmp );
+        memmove( &m_whiteCache[0], &m_whiteCache[1], sizeof(SPRITE) * (16 - 1) );
+        memset( &m_whiteCache[15], 0, sizeof(SPRITE) );
+        m_nWhiteCache = 15;
+    }
+
+    //Decode at the same size as the normal sprite so both can be blended into the
+    //same surface during the fade without a size mismatch.
+    SPRITE* s = &m_whiteCache[m_nWhiteCache];
+    memset( s, 0, sizeof(SPRITE) );
+    s->hIcon = hIcon;
+    s->w     = w;
+    s->h     = h;
+
+    HBITMAP hBmp = BuildARGB( hIcon, w, h, &s->pBits );
+    if( hBmp == NULL || s->pBits == NULL )
+    {
+        if( hBmp ) DeleteObject( hBmp );
+        s->hBmp = NULL;
+        s->pBits = NULL;
+        return s;   //caller checks pBits; nothing cached, so it will retry later
+    }
+    s->hBmp = hBmp;
+
+    int nPixels = w * h;
+    BYTE* p = s->pBits;
+    for( int i = 0; i < nPixels; i++, p += 4 )
+    {
+        BYTE a = p[3];
+        if( a == 0 ) continue;      //already fully transparent; leave it alone
+        p[0] = a;                   //blue  = coverage  (premultiplied white)
+        p[1] = a;                   //green = coverage
+        p[2] = a;                   //red   = coverage
+    }
+
+    m_nWhiteCache++;
+    return s;
+}
 
 //Composite a premultiplied-ARGB sprite onto the premultiplied-ARGB surface.
 //(dx,dy) are surface-local pixel coordinates and may be negative.
@@ -1072,7 +1139,12 @@ void CTransparentPet::Redraw()
         if( alpha < 0 )   alpha = 0;
         if( alpha > 255 ) alpha = 255;
 
-        SPRITE* s = GetSprite( m_fp[i].hIcon, cw, ch );
+        //A footprint stored as "white" is drawn from the white-tinted cache, so
+        //the colour decision is frozen at the moment the paw touched the ground:
+        //turning the proxy off leaves the trail that is already fading completely
+        //untouched instead of retro-recolouring it.
+        SPRITE* s = m_fp[i].bWhite ? GetWhiteSprite( m_fp[i].hIcon, cw, ch )
+                                   : GetSprite( m_fp[i].hIcon, cw, ch );
         if( s && s->pBits )
             BlendSprite( m_fp[i].x - winX, m_fp[i].y - winY, s->pBits, cw, ch, alpha );
 
@@ -1384,6 +1456,13 @@ void CTransparentPet::ForceShow()
 
 void CTransparentPet::DrawOnTarget( int x, int y, HICON hIcon )
 {
+    //Normal (coloured) footprint - the historical entry point.
+    DrawOnTargetEx( x, y, hIcon, FALSE );
+}
+
+
+void CTransparentPet::DrawOnTargetEx( int x, int y, HICON hIcon, BOOL bWhite )
+{
     if( !hIcon ) return;
 
     //drop the oldest footprint when the ring is full
@@ -1398,6 +1477,7 @@ void CTransparentPet::DrawOnTarget( int x, int y, HICON hIcon )
     m_fp[m_nfp].hIcon   = hIcon;
     m_fp[m_nfp].dwBirth = GetTickCount();
     m_fp[m_nfp].bAlpha  = 255;      //freshly dropped: fully opaque
+    m_fp[m_nfp].bWhite  = bWhite;
     m_nfp++;
 
     //run a timer while the trail is alive so the footprints actually fade
@@ -1415,3 +1495,4 @@ void CTransparentPet::DrawOnTarget( int x, int y, HICON hIcon )
 
     Redraw();
 }
+
