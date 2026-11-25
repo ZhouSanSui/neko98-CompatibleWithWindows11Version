@@ -48,8 +48,8 @@ IDI_TAB_EFFECTS         ICON    DISCARDABLE     "res\\tab_effects.ico"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 4,3,0,0
- PRODUCTVERSION 4,3,0,0
+ FILEVERSION 4,3,1,0
+ PRODUCTVERSION 4,3,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -67,14 +67,14 @@ BEGIN
             VALUE "Comments", "NekoCFG 4.0g (Chinese, Windows 11 build)\0"
             VALUE "CompanyName", "DHSoft\0"
             VALUE "FileDescription", "Neko Desktop Pet Configuration\0"
-            VALUE "FileVersion", "4.3.0.0\0"
+            VALUE "FileVersion", "4.3.1.0\0"
             VALUE "InternalName", "NekoCFG\0"
             VALUE "LegalCopyright", "Copyright (C) 1999 DHSoft\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "NekoCFG.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "Neko 配置程序\0"
-            VALUE "ProductVersion", "4.3.0.0\0"
+            VALUE "ProductVersion", "4.3.1.0\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -108,7 +108,7 @@ BEGIN
     CONTROL         "开机自动启动(&T)",IDC_AUTOSTART,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,15,150,115,10,0,HIDC_AUTOSTART
     PUSHBUTTON      "关于(&U)...",IDC_ABOUT,7,189,50,14,0,0,HIDC_ABOUT
-    CONTROL         "Tab1",IDC_TABS,"SysTabControl32",TCS_MULTILINE | 
+    CONTROL         "Tab1",IDC_TABS,"SysTabControl32",
                     WS_TABSTOP,146,7,159,178,0,HIDC_TABS
     DEFPUSHBUTTON   "确定",IDOK,145,189,50,14,0,0,HIDOK
     PUSHBUTTON      "取消",IDCANCEL,200,189,50,14,0,0,HIDCANCEL

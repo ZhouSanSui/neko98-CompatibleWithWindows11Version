@@ -70,23 +70,19 @@ void WINAPI InitialisePropertyDialog( HWND hWnd )
 {
     int i;
 
-    //create the image list
-    g_himgTabIcons = ImageList_Create( 16, 16, ILC_COLOR4|ILC_MASK, NUM_PAGES, 0 );
-    for( i = 0; i < NUM_PAGES; i++ )
-    {
-        HICON hIcon = (HICON)LoadImage( g_hInstance, MAKEINTRESOURCE(tibTabs[i].uIDIcon), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE );
-        tibTabs[i].uIDIcon = ImageList_AddIcon( g_himgTabIcons, hIcon );
-        DestroyIcon( hIcon );
-    }
-    TabCtrl_SetImageList( hWnd, g_himgTabIcons );
-
+    //No icons on the tabs. Each icon costs about 22 pixels of caption width, and
+    //with five captions the row then no longer fits the control, so the control
+    //wrapped to two rows. A multiline tab control always keeps the selected row
+    //at the bottom, so every click moved all five captions - the caption under
+    //the pointer no longer belonged to the tab that was clicked. One row of
+    //text-only captions fits comfortably, which keeps the geometry stable.
+    g_himgTabIcons = NULL;
 
     //insert tabs for each of the dialog items and create the (hidden) dialog
     TC_ITEM tie;
-    tie.mask = TCIF_TEXT | TCIF_IMAGE;
+    tie.mask = TCIF_TEXT;
     for( i = 0; i < NUM_PAGES; i++ )
     {
-        tie.iImage = tibTabs[i].uIDIcon;
         tie.pszText = tibTabs[i].szTitle;
         TabCtrl_InsertItem( hWnd, i, &tie );
 
@@ -94,11 +90,54 @@ void WINAPI InitialisePropertyDialog( HWND hWnd )
     }
 
     //calculate where to stick each dialog
+    //
+    //The body starts just below the tab row(s), so measure where the tab control
+    //actually puts its items instead of assuming a height. The old code used a
+    //hardcoded 42, which was the height of TWO rows: the control was created with
+    //TCS_MULTILINE and the tab captions plus icons did not fit one row, so it
+    //wrapped. A multiline tab control keeps the selected row at the BOTTOM, which
+    //means every selection change moved every caption to a different place - the
+    //label under the mouse pointer became a different tab than the one that was
+    //clicked, and the contents no longer matched the highlighted caption. The
+    //control is now single row (no TCS_MULTILINE, no icons, wider box) and the
+    //body offset is derived from the item rectangles so it stays correct either
+    //way.
     GetWindowRect( hWnd, &g_rcTabStart );
     ScreenToClient( GetParent(hWnd), (LPPOINT)&g_rcTabStart.left );
     ScreenToClient( GetParent(hWnd), (LPPOINT)&g_rcTabStart.right );
-    g_rcTabStart.top += 42;
+    {
+        RECT rcItem;
+        int  nBodyTop = 0;
+
+        for( i = 0; i < NUM_PAGES; i++ )
+        {
+            rcItem.left = rcItem.top = rcItem.right = rcItem.bottom = 0;
+            if( TabCtrl_GetItemRect( hWnd, i, &rcItem ) )
+            {
+                if( rcItem.bottom > nBodyTop ) nBodyTop = rcItem.bottom;
+            }
+        }
+        if( nBodyTop <= 0 ) nBodyTop = 24;      //sensible fallback
+        g_rcTabStart.top += nBodyTop + 2;
+    }
     g_rcTabStart.left += 3;
+
+    //Move every page onto the tab rectangle right now, while they are still
+    //hidden. CreateDialog() leaves each page at the position stored in its
+    //template, which for these dialogs is the top left corner of the parent, so
+    //a page that was never repositioned would appear on top of the cat list
+    //instead of over the tab. Only the page shown by OnSelChanged() used to be
+    //moved, which meant every other page first appeared in the wrong place and
+    //left the tab area showing whatever was painted there before - the exact
+    //symptom of a tab being selected while the old page stays visible.
+    for( i = 0; i < NUM_PAGES; i++ )
+    {
+        if( tibTabs[i].hDlg != NULL )
+        {
+            SetWindowPos( tibTabs[i].hDlg, NULL, g_rcTabStart.left, g_rcTabStart.top,
+                          0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE );
+        }
+    }
 
     //store the handle and show the first page
     g_hWndTab = hWnd;
@@ -108,21 +147,52 @@ void WINAPI InitialisePropertyDialog( HWND hWnd )
 /* ShutdownPropertyDialog - releases any resources owned by the propery sheet */
 void WINAPI ShutdownPropertyDialog()
 {
-    ImageList_Destroy( g_himgTabIcons );
+    //The tab control no longer has an image list (see InitialisePropertyDialog),
+    //so this is normally NULL; ImageList_Destroy(NULL) is a no-op anyway.
+    if( g_himgTabIcons != NULL )
+    {
+        ImageList_Destroy( g_himgTabIcons );
+        g_himgTabIcons = NULL;
+    }
 }
 
 /* OnTabSelection - updates the tabs when one is selected */
 void WINAPI OnSelChanged( HWND hWnd ) 
 { 
     int iSel = TabCtrl_GetCurSel( hWnd ); 
- 
-    //destroy the current child dialog box, if any. 
-    if( g_hDlgDisplay != NULL) ShowWindow( g_hDlgDisplay, SW_HIDE ); 
- 
-    //create the new child dialog box. 
+
+    //TabCtrl_GetCurSel() returns -1 when the control has no selection, which
+    //happens for an empty control and also transiently while a click is being
+    //processed. Using it without this guard indexes tibTabs[-1] and hands the
+    //resulting garbage pointer to ShowWindow(), which kills the process with a
+    //fatal user callback exception. Keep the current page in that case.
+    if( iSel < 0 || iSel >= NUM_PAGES )
+        return;
+
+    //Hide every page that is not the selected one, rather than only the page
+    //remembered in g_hDlgDisplay. All five pages are created up front and all
+    //of them sit at the same rectangle, so if the remembered page ever gets out
+    //of step with what is actually on screen (for example two pages shown by
+    //two different code paths, or a page shown while g_hDlgDisplay still points
+    //somewhere else) the stale page stays visible underneath and its controls
+    //paint over the new page. That is exactly the symptom of a tab appearing
+    //selected while the area below still shows the previous page. Sweeping all
+    //pages makes this function idempotent and immune to that drift.
+    for( int i = 0; i < NUM_PAGES; i++ )
+    {
+        if( i != iSel && tibTabs[i].hDlg != NULL )
+            ShowWindow( tibTabs[i].hDlg, SW_HIDE );
+    }
+
     g_hDlgDisplay = tibTabs[iSel].hDlg;
     ShowWindow( g_hDlgDisplay, SW_SHOW );
-    
+
+    //The pages are siblings created in tab order, so the newly shown page can
+    //still sit below an older one in the Z order. Raise it explicitly, otherwise
+    //a previously shown page that was skipped by the hide loop above would stay
+    //on top and the tab would look dead.
+    SetWindowPos( g_hDlgDisplay, HWND_TOP, g_rcTabStart.left, g_rcTabStart.top,
+                  0, 0, SWP_NOSIZE | SWP_SHOWWINDOW );
 }
 
 /* SetActiveCat - selects which cat to configure */
