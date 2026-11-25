@@ -1,4 +1,4 @@
-/****************
+﻿/****************
   NekoCFG
 
   Configuration
@@ -33,8 +33,6 @@ static DWORD dwHelpID[] = {
     IDC_DELETE,         HIDC_DELETE,
     IDC_TASKBAR,        HIDC_TASKBAR, 
     IDC_AUTOSTART,      HIDC_AUTOSTART,
-    IDC_HOTKEY,         HIDC_HOTKEY,
-    IDC_HIDEHOTKEY,     HIDC_HIDEHOTKEY,
     IDC_ABOUT,          HIDC_ABOUT,
     IDOK,               HIDOK,
     IDCANCEL,           HIDCANCEL,
@@ -53,11 +51,6 @@ HWND g_hWndNeko = NULL;
 BOOL g_fShowTaskbar = TRUE;
 BOOL g_fAutoStart = FALSE;
 
-//The global hot keys are machine-wide settings, not per-cat ones, so they live
-//here next to the other global switches. g_dwHotkey pauses/resumes the cats,
-//g_dwHideHotkey hides/shows them.
-DWORD g_dwHotkey = 0;
-DWORD g_dwHideHotkey = 0;
 
 //list of all cats
 LPCATSETTINGS catSettings = NULL;
@@ -185,12 +178,6 @@ BOOL CALLBACK DlgProc_NewNeko( HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
                     cat->uScale = 100;
                     cat->uSpeed = 16;
                     cat->uMouseSensitivity = 6;
-                    strcpy( cat->szSndIdle1, "" );
-                    strcpy( cat->szSndIdle2, "" );
-                    strcpy( cat->szSndIdle3, "" );
-	                strcpy( cat->szSndSleep, "" );
-                    strcpy( cat->szSndAwake, "" );
-	                cat->uSndFrequency = 0;
                     cat->uAction = CHASE_MOUSE;
 					cat->fAlwaysOnTop = FALSE;
                     cat->bFootprints = FALSE;
@@ -289,28 +276,9 @@ static BOOL WINAPI ApplyGlobalSettings( HWND hDlg )
     g_fShowTaskbar = ( IsDlgButtonChecked( hDlg, IDC_TASKBAR ) == BST_CHECKED );
     g_fAutoStart   = ( IsDlgButtonChecked( hDlg, IDC_AUTOSTART ) == BST_CHECKED );
 
-    //The hot key controls keep the modifiers in the high byte and the virtual
-    //key in the low byte, which is the layout NekoHotkeySave expects. An empty
-    //control means "no hot key", so 0 is stored on purpose.
-    WORD wHotkey = (WORD)SendDlgItemMessage( hDlg, IDC_HOTKEY, HKM_GETHOTKEY, 0, 0 );
-    g_dwHotkey = NekoHotkeyFromControl( wHotkey );
-
-    WORD wHideHotkey = (WORD)SendDlgItemMessage( hDlg, IDC_HIDEHOTKEY, HKM_GETHOTKEY, 0, 0 );
-    g_dwHideHotkey = NekoHotkeyFromControl( wHideHotkey );
-
-    //The two combinations must differ: the system registers a hot key by its
-    //combination, so the second one would fail and one action would be
-    //unreachable. Refuse the duplicate and leave the stored values alone.
-    if( NekoHotkeyConflict( g_dwHotkey, g_dwHideHotkey ) )
-    {
-        MessageBox( hDlg,
-                    "“代理”和“隐藏/缩放”不能使用同一个快捷键，请修改其中一个。",
-                    szWindowTitle, MB_ICONWARNING );
-        return FALSE;
-    }
-
-    NekoHotkeySave( g_dwHotkey, FALSE );
-    NekoHotkeySave( g_dwHideHotkey, TRUE );
+    //The shortcuts are no longer entered here: they live on the "快捷键" tab,
+    //which saves the whole list itself when its page is applied. Writing the
+    //old two slots from this dialog would fight that list.
 
     if( !NekoAutoStartSet( g_fAutoStart ) )
         MessageBox( hDlg,
@@ -319,17 +287,6 @@ static BOOL WINAPI ApplyGlobalSettings( HWND hDlg )
                         : "无法删除开机启动项。\n请确认当前用户有权写入注册表。",
                     szWindowTitle, MB_ICONWARNING );
 
-    //Warn when a combination cannot be used, so the user does not walk away
-    //thinking it works. This is the same condition the pet tests when it applies
-    //the key.
-    if( g_dwHotkey != 0 && !NekoHotkeyIsUsable( g_dwHotkey ) )
-        MessageBox( hDlg,
-                    "“代理”的快捷键无效：请至少使用 Ctrl、Alt、Shift 或 Win 中的一个，再配合一个普通按键。",
-                    szWindowTitle, MB_ICONWARNING );
-    else if( g_dwHideHotkey != 0 && !NekoHotkeyIsUsable( g_dwHideHotkey ) )
-        MessageBox( hDlg,
-                    "“隐藏/缩放”的快捷键无效：请至少使用 Ctrl、Alt、Shift 或 Win 中的一个，再配合一个普通按键。",
-                    szWindowTitle, MB_ICONWARNING );
 
     return TRUE;
 }
@@ -347,18 +304,6 @@ BOOL CALLBACK DlgProc_Config( HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam
             //tool, or a stale path after the folder was moved).
             SendDlgItemMessage( hDlg, IDC_AUTOSTART, BM_SETCHECK, NekoAutoStartIsEnabled() ? BST_CHECKED : BST_UNCHECKED, 0 );
 
-            //The hot key controls store exactly the layout we persist, so the
-            //values can be handed over unchanged. A stored 0 leaves them empty.
-            SendDlgItemMessage( hDlg, IDC_HOTKEY, HKM_SETHOTKEY, (WPARAM)(WORD)g_dwHotkey, 0 );
-            SendDlgItemMessage( hDlg, IDC_HIDEHOTKEY, HKM_SETHOTKEY, (WPARAM)(WORD)g_dwHideHotkey, 0 );
-            //Refuse modifier-only combinations while the user records the keys,
-            //and fall back to Ctrl+Alt rather than silently clearing them.
-            SendDlgItemMessage( hDlg, IDC_HOTKEY, HKM_SETRULES,
-                                (WPARAM)( HKCOMB_NONE | HKCOMB_S | HKCOMB_C | HKCOMB_A | HKCOMB_SC | HKCOMB_SA | HKCOMB_CA ),
-                                MAKELPARAM( HOTKEYF_CONTROL | HOTKEYF_ALT, 0 ) );
-            SendDlgItemMessage( hDlg, IDC_HIDEHOTKEY, HKM_SETRULES,
-                                (WPARAM)( HKCOMB_NONE | HKCOMB_S | HKCOMB_C | HKCOMB_A | HKCOMB_SC | HKCOMB_SA | HKCOMB_CA ),
-                                MAKELPARAM( HOTKEYF_CONTROL | HOTKEYF_ALT, 0 ) );
 
             LPCATSETTINGS cat = catSettings;
             while( cat )
@@ -597,14 +542,6 @@ void WINAPI WriteCatSettings( LPCATSETTINGS cat, LPCSTR szName )
         NekoSettings.SetInt( szNekoSpeedKey, cat->uSpeed );
         NekoSettings.SetInt( szNekoSenseKey, cat->uMouseSensitivity );
 
-        //sounds
-        NekoSettings.SetString( szNekoSndIdle1Key, cat->szSndIdle1 );
-        NekoSettings.SetString( szNekoSndIdle2Key, cat->szSndIdle2 );
-        NekoSettings.SetString( szNekoSndIdle3Key, cat->szSndIdle3 );
-	    NekoSettings.SetString( szNekoSndSleepKey, cat->szSndSleep );
-        NekoSettings.SetString( szNekoSndAwakeKey, cat->szSndAwake );
-	    NekoSettings.SetInt( szNekoSndFreqKey, cat->uSndFrequency );
-
         //independence
         NekoSettings.SetInt( szNekoActionKey, cat->uAction );
 
@@ -620,6 +557,8 @@ void WINAPI WriteSettings()
 {
     //tell all dialogs to write what they've got so far into the data structure
     GetDialogSettings();
+    //the hot keys are global, so their page is saved even with no cat selected
+    SaveHotkeyPage();
 
     //write global settings
     CNekoSettings NekoSettings( szNekoRegKey );
@@ -665,12 +604,6 @@ void WINAPI ReadCatSettings( LPCATSETTINGS cat, LPCSTR szName )
     cat->uScale = 100;
     cat->uSpeed = 16;
     cat->uMouseSensitivity = 6;
-    strcpy( cat->szSndIdle1, "" );
-    strcpy( cat->szSndIdle2, "" );
-    strcpy( cat->szSndIdle3, "" );
-	strcpy( cat->szSndSleep, "" );
-    strcpy( cat->szSndAwake, "" );
-	cat->uSndFrequency = 0;
     cat->uAction = CHASE_MOUSE;
     cat->fDeleted = FALSE;
     cat->fAlwaysOnTop = FALSE;
@@ -699,14 +632,6 @@ void WINAPI ReadCatSettings( LPCATSETTINGS cat, LPCSTR szName )
     NekoSettings.GetInt( szNekoSpeedKey, &cat->uSpeed );
     NekoSettings.GetInt( szNekoSenseKey, &cat->uMouseSensitivity );
 
-    //sounds
-    NekoSettings.GetString( szNekoSndIdle1Key, cat->szSndIdle1, MAX_PATH-1 );
-    NekoSettings.GetString( szNekoSndIdle2Key, cat->szSndIdle2, MAX_PATH-1 );
-    NekoSettings.GetString( szNekoSndIdle3Key, cat->szSndIdle3, MAX_PATH-1 );
-	NekoSettings.GetString( szNekoSndSleepKey, cat->szSndSleep, MAX_PATH-1 );
-    NekoSettings.GetString( szNekoSndAwakeKey, cat->szSndAwake, MAX_PATH-1 );
-	NekoSettings.GetInt( szNekoSndFreqKey, &cat->uSndFrequency );
-
     //independence
     NekoSettings.GetInt( szNekoActionKey, &cat->uAction );
 
@@ -722,10 +647,6 @@ void WINAPI ReadSettings()
     CNekoSettings * NekoSettings = new CNekoSettings( szNekoRegKey );
     NekoSettings->GetBool( szNekoTaskbarKey, &g_fShowTaskbar );
 
-    //NekoHotkeyLoad returns the built-in default when a value has never been
-    //written, so the pet works out of the box. Both slots are read here.
-    g_dwHotkey     = NekoHotkeyLoad( FALSE );
-    g_dwHideHotkey = NekoHotkeyLoad( TRUE );
 
     //load in new cats list
     DWORD nNumCats = 0;

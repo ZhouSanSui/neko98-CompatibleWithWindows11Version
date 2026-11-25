@@ -23,12 +23,9 @@
 #define szNekoSpeedKey          "Speed"
 #define szNekoSenseKey          "Sensitivity"
 #define szNekoLibraryKey        "Library"
-#define szNekoSndIdle1Key       "Snd_Idle1"
-#define szNekoSndIdle2Key       "Snd_Idle2"
-#define szNekoSndIdle3Key       "Snd_Idle3"
-#define szNekoSndSleepKey       "Snd_Sleep"
-#define szNekoSndAwakeKey       "Snd_Awake"
-#define szNekoSndFreqKey        "Sound Frequency"
+//Sound keys are gone: the sound feature was removed in this build. The old
+//values (Snd_Idle1..3 / Snd_Sleep / Snd_Awake / "Sound Frequency") may still
+//sit in a user's registry; nothing reads them any more and they are harmless.
 #define szNekoScaleKey          "Size"
 #define szNekoOnTopKey          "On Top"
 #define szNekoFootprintLibKey   "Footprint Library"

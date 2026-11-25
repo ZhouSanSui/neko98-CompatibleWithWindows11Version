@@ -10,7 +10,11 @@
 #define HIDC_AUTOSTART                  0x809e0423    // IDD_CONFIG
 #define HIDC_HOTKEY                     0x809e0424
 #define HIDC_HIDEHOTKEY                 0x809e0425    // IDD_CONFIG
-#define HIDC_BROWSE                     0x80a20406    // IDD_SOUND
+#define HIDC_HKTYPE                     0x80a20426    // IDD_HOTKEYS
+#define HIDC_HKADD                      0x80a20427    // IDD_HOTKEYS
+#define HIDC_HKLIST                     0x80a20428    // IDD_HOTKEYS
+#define HIDC_HKDEL                      0x80a2042e    // IDD_HOTKEYS
+#define HIDC_HKINFO                     0x80a2042f    // IDD_HOTKEYS
 #define HIDC_CHANGE                     0x8070006b    // IDD_DISPLAY
 #define HIDC_DEFAULT                    0x8070006c    // IDD_DISPLAY
 #define HIDC_DELETE                     0x809e0414    // IDD_CONFIG
@@ -19,15 +23,10 @@
 #define HIDC_IMAGELIB                   0x80700068    // IDD_DISPLAY
 #define HIDC_NAME                       0x809e0415    // IDD_CONFIG
 #define HIDC_NEW                        0x809e0413    // IDD_CONFIG
-#define HIDC_NONE                       0x80a2040a    // IDD_SOUND
-#define HIDC_PREVIEW                    0x80a20069    // IDD_SOUND
 #define HIDC_SCALEDISPLAY               0x8070040d    // IDD_DISPLAY
 #define HIDC_SCALESLIDER                0x8070040c    // IDD_DISPLAY
 #define HIDC_SENSESLIDER                0x806d0067    // IDD_MOVEMENT
 #define HIDC_SET100                     0x80700410    // IDD_DISPLAY
-#define HIDC_SOUNDFREQ                  0x80a20409    // IDD_SOUND
-#define HIDC_SOUNDNAME                  0x80a20405    // IDD_SOUND
-#define HIDC_SOUNDSAVAIL                0x80a203f6    // IDD_SOUND
 #define HIDC_SPEEDSLIDER                0x806d0066    // IDD_MOVEMENT
 #define HIDC_TABS                       0x809e0412    // IDD_CONFIG
 #define HIDC_TASKBAR                    0x809e006a    // IDD_CONFIG

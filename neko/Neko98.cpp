@@ -12,6 +12,8 @@
 #include "NekoSettings.h"
 #include "AutoStart.h"
 #include "Hotkey.h"
+#include "HotkeyList.h"
+#include "Actions.h"
 #include "ProxyToggle.h"
 #include "NekoCommon.h"
 #include "resource.h"
@@ -51,11 +53,14 @@ BOOL g_fNeedReinit = TRUE;
 //re-extracts all 40 icons and teleports the pet to a new random position.
 BOOL g_fNeedGeometryRefresh = FALSE;
 
-//The hot keys currently in force, and whether the user was already warned that
-//one could not be registered (so we complain once, not on every reload).
-//Index 0 = pause/resume, index 1 = hide/show.
-static DWORD g_dwHotkey = 0;
-static DWORD g_dwHideHotkey = 0;
+//Which shortcut entries are actually registered with the system, and whether the
+//user was already warned that one could not be (so we complain once rather than
+//on every reload).
+//
+//Ids are NEKO_HOTKEY_ID_BASE + index into g_HotkeyList. A fixed base keeps them
+//clear of any id the rest of the program might use, and the index is what lets
+//WM_HOTKEY find the entry whose action should run.
+#define NEKO_HOTKEY_ID_BASE 100
 static BOOL  g_fHotkeyFailed = FALSE;
 
 //Posted by a second copy of the program when the user launches it while a pet is
@@ -169,6 +174,11 @@ static void ApplyPetState( BOOL bPersist )
 }
 
 /* LoadConfiguration - reloads the program configuration *******************************/
+
+//Forward: LoadConfiguration re-applies the shortcut list, and the list registration
+//needs the same handler table defined further down.
+void ApplyHotkeyList( BOOL bReportErrors );
+
 void LoadConfiguration()
 {
     //load in the new global settings
@@ -244,66 +254,79 @@ void LoadConfiguration()
     //update task bar
     ApplyTrayState();
 
-    //The user may have chosen new combinations in the settings dialog, and the
-    //settings dialog only tells us "reload". Re-apply each hot key when it moved.
-    BOOL fHotkeyChanged = FALSE;
+    //Reload the shortcut list and re-register every combination. The settings
+    //dialog only tells us "reload", so this is where a newly added, edited or
+    //removed shortcut actually takes effect.
+    ApplyHotkeyList( TRUE );
+}
 
-    DWORD dwWant = NekoHotkeyLoad( FALSE );
-    if( dwWant != g_dwHotkey || NekoHotkeyCurrent( FALSE ) != dwWant )
+
+/* ApplyHotkeyList - (re)register every shortcut in the user's list ****************/
+//
+//Called on start-up and after the settings dialog saves. Registrations are keyed
+//by list INDEX, so an entry that moved keeps working and one that was deleted is
+//released. A combination that cannot be registered (another program owns it, or
+//two entries were hand-edited to the same key) is reported once: silently doing
+//nothing is the failure mode the user cannot diagnose.
+void ApplyHotkeyList( BOOL bReportErrors )
+{
+    int i;
+
+    //Drop everything we held before, so a deleted or edited entry cannot leave a
+    //stale registration behind.
+    NekoHotkeyUnregisterAll( g_hWndMain );
+
+    HotkeyListLoad();
+
+    int nFailed = 0;
+    char szFirstBad[128];
+    szFirstBad[0] = '\0';
+
+    for( i = 0; i < g_nHotkeyList; i++ )
     {
-        g_dwHotkey = dwWant;
-        fHotkeyChanged = TRUE;
-        if( dwWant != 0 && !NekoHotkeyApply( g_hWndMain, dwWant, FALSE ) )
+        if( g_HotkeyList[i].dwHotkey == 0 ) continue;   //deliberately unbound
+
+        if( !NekoHotkeyRegister( g_hWndMain, NEKO_HOTKEY_ID_BASE + i,
+                                 g_HotkeyList[i].dwHotkey ) )
         {
-            //Another program already owns the combination, or both slots were
-            //given the same combination. Say so once, rather than silently doing
-            //nothing every time settings are applied.
-            if( !g_fHotkeyFailed )
+            nFailed++;
+            if( szFirstBad[0] == '\0' )
             {
-                g_fHotkeyFailed = TRUE;
-                MessageBox( g_hWndMain,
-                            "所设置的全局快捷键已被其他程序占用（或与另一个快捷键重复），Neko 无法使用它。\n请在设置中换一个组合。",
-                            "Neko 快捷键", MB_ICONINFORMATION );
+                const char* szName = HotkeyTypeName( g_HotkeyList[i].dwType );
+                strncpy( szFirstBad, szName, sizeof szFirstBad - 1 );
+                szFirstBad[sizeof szFirstBad - 1] = '\0';
             }
         }
     }
 
-    DWORD dwWantHide = NekoHotkeyLoad( TRUE );
-    if( dwWantHide != g_dwHideHotkey || NekoHotkeyCurrent( TRUE ) != dwWantHide )
+    if( nFailed > 0 && bReportErrors && !g_fHotkeyFailed )
     {
-        g_dwHideHotkey = dwWantHide;
-        fHotkeyChanged = TRUE;
-        if( dwWantHide != 0 && !NekoHotkeyApply( g_hWndMain, dwWantHide, TRUE ) )
-        {
-            if( !g_fHotkeyFailed )
-            {
-                g_fHotkeyFailed = TRUE;
-                MessageBox( g_hWndMain,
-                            "所设置的“隐藏/显示”快捷键已被其他程序占用（或与另一个快捷键重复），Neko 无法使用它。\n请在设置中换一个组合。",
-                            "Neko 快捷键", MB_ICONINFORMATION );
-            }
-        }
+        g_fHotkeyFailed = TRUE;
+        char szMsg[512];
+        _snprintf( szMsg, sizeof szMsg,
+                   "有 %d 个全局快捷键无法注册（例如“%s”）。\n"
+                   "可能已被其他程序占用，或与另一个快捷键重复。\n请在设置中换一个组合。",
+                   nFailed, szFirstBad );
+        szMsg[sizeof szMsg - 1] = '\0';
+        MessageBox( g_hWndMain, szMsg, "Neko 快捷键", MB_ICONINFORMATION );
     }
-
-    //Clear the one-time warning as soon as both combinations are in force again.
-    if( fHotkeyChanged && NekoHotkeyCurrent( FALSE ) == g_dwHotkey &&
-        NekoHotkeyCurrent( TRUE ) == g_dwHideHotkey )
+    else if( nFailed == 0 )
     {
+        //Everything is in force again: allow a future warning to be shown.
         g_fHotkeyFailed = FALSE;
     }
 }
 
 
-/* HandleProxyHotkey - the first hot key now switches the Windows manual proxy ***/
+/* HandleProxyHotkey - switch the Windows manual proxy ****************************/
 //
-//This key used to pause the cats. The user asked for it to control the system
-//proxy instead, so pausing moved to the tray menu (where it still lives) and the
-//key now flips the manual proxy on and off. The state is reported back through
+//The address comes from the shortcut entry that was pressed, so two proxy
+//shortcuts can point at two different servers. The state is reported back through
 //the tray tool tip so the user gets feedback without opening Settings.
-static void HandleProxyHotkey()
+static void HandleProxyHotkey( const char* szServer )
 {
     BOOL bWas = ProxyIsEnabled();
-    BOOL bNow = ProxyToggle();
+    BOOL bNow = ProxyToggleEx( szServer );
 
     //Silent when the switch really moved; only complain when the registry write
     //was refused, because otherwise a failing hot key is invisible.
@@ -385,6 +408,59 @@ static void ForceShowPets()
 }
 
 
+/* RunHotkeyAction - dispatch one entry of the shortcut list *********************/
+//
+//One function so the hot key, the tray menu and the settings preview all drive
+//exactly the same code path; anything else is how a menu item and a key quietly
+//start behaving differently.
+static void RunHotkeyAction( const NEKOHOTKEY* lpEntry )
+{
+    if( lpEntry == NULL ) return;
+
+    switch( lpEntry->dwType )
+    {
+        case NEKO_HT_HIDE:
+            //The three-state cycle: normal -> magnified -> hidden -> normal.
+            HandleHideHotkey();
+            break;
+
+        case NEKO_HT_PROXY:
+        {
+            //The entry stores the two parts separately so the settings dialog can
+            //edit them as two boxes; ProxyToggle wants one "host:port" string.
+            char szServer[NEKO_HT_P1 + NEKO_HT_P2 + 2];
+            _snprintf( szServer, sizeof szServer, "%s:%s", lpEntry->szP1, lpEntry->szP2 );
+            szServer[sizeof szServer - 1] = '\0';
+            HandleProxyHotkey( szServer );
+            break;
+        }
+
+        case NEKO_HT_NOSLEEP:
+            SleepGuardToggle();
+            ApplyTrayState();
+            break;
+
+        case NEKO_HT_WEBSITE:
+            if( !WebLauncherOpen( lpEntry->szP1, lpEntry->szP2, lpEntry->szP2 ) )
+            {
+                MessageBox( NULL,
+                            "无法打开指定的浏览器。\n请检查“打开网站”快捷方式里选择的浏览器是否正确。",
+                            "Neko98", MB_ICONWARNING | MB_TASKMODAL );
+            }
+            break;
+
+        case NEKO_HT_PROJECTION:
+            if( ProjectionToggle( lpEntry->szP1, lpEntry->szP2 ) < 0 )
+            {
+                MessageBox( NULL,
+                            "无法切换投影方式。\n请检查快捷方式里选择的两个显示模式是否不同。",
+                            "Neko98", MB_ICONWARNING | MB_TASKMODAL );
+            }
+            break;
+    }
+}
+
+
 /* WndProc - message processing function for the hidden Neko window ********************/
 LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam )
 {
@@ -416,9 +492,33 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
                     break;
 
                 case ID_TRAY_PROXY:
-                    //Same helper as the hot key, so the menu and the key drive
-                    //exactly the same code path.
-                    HandleProxyHotkey();
+                    //Same entry the shortcut list uses, so the menu and the key
+                    //drive exactly the same code path (with the same address).
+                    {
+                        NEKOHOTKEY entry;
+                        memset( &entry, 0, sizeof entry );
+                        entry.dwType = NEKO_HT_PROXY;
+                        //Use whatever address is configured in the first proxy
+                        //shortcut, so the menu agrees with the key.
+                        int i;
+                        BOOL bFound = FALSE;
+                        for( i = 0; i < g_nHotkeyList; i++ )
+                        {
+                            if( g_HotkeyList[i].dwType == NEKO_HT_PROXY )
+                            {
+                                entry = g_HotkeyList[i];
+                                bFound = TRUE;
+                                break;
+                            }
+                        }
+                        if( bFound ) RunHotkeyAction( &entry );
+                        else
+                        {
+                            //No proxy entry configured: fall back to the built-in
+                            //address so the menu item still does something.
+                            HandleProxyHotkey( NULL );
+                        }
+                    }
                     break;
 
                 case ID_TRAY_PAUSE:
@@ -446,11 +546,15 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
             break;
 
         case WM_HOTKEY:
-            //The first combination used to pause the cats; it now switches the
-            //Windows manual proxy, as asked. Pausing stayed available in the tray
-            //menu. The second combination still runs the hide/show cycle.
-            if( wParam == NEKO_HOTKEY_ID )           HandleProxyHotkey();
-            else if( wParam == NEKO_HIDE_HOTKEY_ID ) HandleHideHotkey();
+            //Ids are NEKO_HOTKEY_ID_BASE + the entry's index in the list, so this
+            //is where a shortcut finds out WHICH action the user bound it to.
+            //Anything outside the current list is stale (the list shrank since
+            //the registration) and is simply ignored.
+            {
+                int nIndex = (int)wParam - NEKO_HOTKEY_ID_BASE;
+                if( nIndex >= 0 && nIndex < g_nHotkeyList )
+                    RunHotkeyAction( &g_HotkeyList[nIndex] );
+            }
             break;
 
         case MY_SHOWNEKO:
@@ -502,12 +606,28 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
                     //displayed next to the items they trigger
                     if( Tray != NULL )
                     {
+                        //The hints come from the shortcut LIST now, so the menu
+                        //shows whatever combination is really bound to the
+                        //hide/show and proxy actions (or nothing when the user
+                        //removed that entry).
                         char szPauseHint[64], szHideHint[64], szProxyHint[64];
-                        NekoHotkeyFormat( g_dwHotkey,     szProxyHint, sizeof(szProxyHint) );
-                        NekoHotkeyFormat( g_dwHideHotkey, szHideHint,  sizeof(szHideHint) );
-                        //the pause action has no hot key any more - it moved to the
-                        //menu when the first combination became the proxy switch
                         szPauseHint[0] = '\0';
+                        szHideHint[0]  = '\0';
+                        szProxyHint[0] = '\0';
+
+                        for( int i = 0; i < g_nHotkeyList; i++ )
+                        {
+                            if( g_HotkeyList[i].dwType == NEKO_HT_HIDE && szHideHint[0] == '\0' )
+                                NekoHotkeyFormat( g_HotkeyList[i].dwHotkey, szHideHint, sizeof(szHideHint) );
+                            else if( g_HotkeyList[i].dwType == NEKO_HT_PROXY && szProxyHint[0] == '\0' )
+                                NekoHotkeyFormat( g_HotkeyList[i].dwHotkey, szProxyHint, sizeof(szProxyHint) );
+                        }
+
+                        //An unbound entry would render as "（未设置）"; suppress
+                        //that in the menu instead of showing a meaningless hint.
+                        if( strcmp( szHideHint, "（未设置）" ) == 0 )  szHideHint[0]  = '\0';
+                        if( strcmp( szProxyHint, "（未设置）" ) == 0 ) szProxyHint[0] = '\0';
+
                         Tray->ShowPopupMenu( hWnd, g_fPaused, g_fHidden, g_fMagnified,
                                              ProxyIsEnabled(),
                                              szPauseHint, szHideHint, szProxyHint );
@@ -624,23 +744,10 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
     //create the tray object
     Tray = new CTray( hInstance );
 
-    //Register the user's global hot keys. On the very first run there is no
-    //setting stored, in which case the default combinations are used. The
-    //pause/resume key is applied first so it wins if both slots were (perhaps by
-    //hand-edited registry) set to the same combination.
-    g_dwHotkey     = NekoHotkeyLoad( FALSE );
-    g_dwHideHotkey = NekoHotkeyLoad( TRUE );
-
-    if( g_dwHotkey != 0 )
-    {
-        if( !NekoHotkeyApply( g_hWndMain, g_dwHotkey, FALSE ) )
-            g_fHotkeyFailed = TRUE;
-    }
-    if( g_dwHideHotkey != 0 )
-    {
-        if( !NekoHotkeyApply( g_hWndMain, g_dwHideHotkey, TRUE ) )
-            g_fHotkeyFailed = TRUE;
-    }
+    //Register the user's global shortcuts. The list is created with the two
+    //defaults the previous build shipped the first time this build runs, and is
+    //migrated from the old two fixed slots so an upgrading user keeps their keys.
+    ApplyHotkeyList( FALSE );
 
     //set a timer to update Neko (the interval is set once the configuration has
     //been read, and LoadConfiguration() re-applies it from then on)
@@ -658,6 +765,7 @@ int CALLBACK WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
     KillTimer( g_hWndMain, ID_TIMER_NEKO );
 
     //release the hot keys and stop listening for session changes
+    NekoHotkeyUnregisterAll( g_hWndMain );
     NekoHotkeyReleaseAll( g_hWndMain );
     WTSUnRegisterSessionNotification( g_hWndMain );
 

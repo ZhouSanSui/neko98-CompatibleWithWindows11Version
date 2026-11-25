@@ -38,27 +38,13 @@ rem ---- compile sources ----
 rem NOTE: the .cpp/.h sources are UTF-8 (no BOM). -finput-charset=UTF-8 reads
 rem them; -fexec-charset=GBK emits the literals as GBK so the Chinese menus
 rem show correctly on a GBK(936) Windows. Do NOT drop these flags.
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c Neko98.cpp -o Neko98.o
-if errorlevel 1 goto :fail
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c Neko.cpp -o Neko.o
-if errorlevel 1 goto :fail
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c Pet.cpp -o Pet.o
-if errorlevel 1 goto :fail
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c TransparentPet.cpp -o TransparentPet.o
-if errorlevel 1 goto :fail
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c Tray.cpp -o Tray.o
-if errorlevel 1 goto :fail
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c NekoSettings.cpp -o NekoSettings.o
-if errorlevel 1 goto :fail
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c AutoStart.cpp -o AutoStart.o
-if errorlevel 1 goto :fail
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c Hotkey.cpp -o Hotkey.o
-if errorlevel 1 goto :fail
-%MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c ProxyToggle.cpp -o ProxyToggle.o
-if errorlevel 1 goto :fail
+for %%f in (Neko98 Neko Pet TransparentPet Tray NekoSettings AutoStart Hotkey HotkeyList Actions ProxyToggle) do (
+    %MINGW%\g++.exe -O2 -DWIN32 -D_WIN32 -Wno-write-strings -finput-charset=UTF-8 -fexec-charset=GBK -c %%f.cpp -o %%f.o
+    if errorlevel 1 goto :fail
+)
 
 rem ---- link: -specs removes gcc's default manifest; manifest_pet.o is the only one ----
-%MINGW%\g++.exe -specs=no_manifest.spec -static -static-libgcc -static-libstdc++ -O2 -mwindows -o Neko98.exe Neko98.o Neko.o Pet.o TransparentPet.o Tray.o NekoSettings.o AutoStart.o Hotkey.o ProxyToggle.o Neko95.o manifest_pet.o -lcomctl32 -luser32 -lgdi32 -lshell32 -lwinmm -lgdiplus -lwtsapi32 -lwininet
+%MINGW%\g++.exe -specs=no_manifest.spec -static -static-libgcc -static-libstdc++ -O2 -mwindows -o Neko98.exe Neko98.o Neko.o Pet.o TransparentPet.o Tray.o NekoSettings.o AutoStart.o Hotkey.o HotkeyList.o Actions.o ProxyToggle.o Neko95.o manifest_pet.o -lcomctl32 -luser32 -lgdi32 -lshell32 -lwinmm -lgdiplus -lwtsapi32 -lwininet -lshcore
 if errorlevel 1 goto :fail
 
 echo LINK_OK

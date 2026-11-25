@@ -28,8 +28,8 @@ LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 4,2,0,0
- PRODUCTVERSION 4,2,0,0
+ FILEVERSION 4,3,0,0
+ PRODUCTVERSION 4,3,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -47,14 +47,14 @@ BEGIN
             VALUE "Comments", "Neko 4.0h (Chinese build)\0"
             VALUE "CompanyName", "DHSoft\0"
             VALUE "FileDescription", "Neko Desktop Pet (Neko98)\0"
-            VALUE "FileVersion", "4.2.0.0\0"
+            VALUE "FileVersion", "4.3.0.0\0"
             VALUE "InternalName", "Neko\0"
             VALUE "LegalCopyright", "Copyright (C) 1999 DHSoft\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "Neko98.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "Neko98\0"
-            VALUE "ProductVersion", "4.2.0.0\0"
+            VALUE "ProductVersion", "4.3.0.0\0"
             VALUE "SpecialBuild", "\0"
         END
     END

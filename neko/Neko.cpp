@@ -93,12 +93,6 @@ CNeko::CNeko( char* lpszName )
     //it is derived from live proxy state on every start, never a user setting.
     m_bFootprintHighlight = FALSE;
 
-	strcpy( m_szSndIdle1, "" );
-	strcpy( m_szSndIdle2, "" );
-	strcpy( m_szSndIdle3, "" );
-	strcpy( m_szSndSleep, "" );
-	strcpy( m_szSndAwake, "" );
-	m_dwSndFrequency = 0;
     m_dwScale = 100;
 
     //oscillation breaker state (see RunTowards): no heading recorded yet and no
@@ -125,12 +119,6 @@ CNeko::CNeko( char* lpszName )
 		NekoSettings.GetInt( szNekoSpeedKey,		&m_dwSpeed );
 		NekoSettings.GetInt( szNekoSenseKey,		&m_dwIdleSpace );
 		NekoSettings.GetString( szNekoLibraryKey,	m_szLibname, MAX_PATH-1 );
-		NekoSettings.GetString( szNekoSndIdle1Key,	m_szSndIdle1, MAX_PATH-1 );
-		NekoSettings.GetString( szNekoSndIdle2Key,	m_szSndIdle2, MAX_PATH-1 );
-		NekoSettings.GetString( szNekoSndIdle3Key,	m_szSndIdle3, MAX_PATH-1 );
-		NekoSettings.GetString( szNekoSndSleepKey,	m_szSndSleep, MAX_PATH-1 );
-		NekoSettings.GetString( szNekoSndAwakeKey,	m_szSndAwake, MAX_PATH-1 );
-		NekoSettings.GetInt( szNekoSndFreqKey,		&m_dwSndFrequency );
         NekoSettings.GetBool( szNekoFootprintKey,   &m_bFootprints );
         NekoSettings.GetString( szNekoFootprintLibKey, m_szFootprintLibname, MAX_PATH-1 );
 
@@ -159,17 +147,11 @@ CNeko::CNeko( char* lpszName )
     m_dwScale        = ClampDword( m_dwScale,        10, 400 );
     m_dwSpeed        = ClampDword( m_dwSpeed,         2, 128 );
     m_dwIdleSpace    = ClampDword( m_dwIdleSpace,     1,  64 );
-    m_dwSndFrequency = ClampDword( m_dwSndFrequency,  0, 100 );
     if( m_Action < CHASE_MOUSE || m_Action > RUN_AROUND ) m_Action = CHASE_MOUSE;
 
     //defensively NUL-terminate every fixed-size string we may have read into
     m_szLibname[MAX_PATH-1] = '\0';
     m_szFootprintLibname[MAX_PATH-1] = '\0';
-    m_szSndIdle1[MAX_PATH-1] = '\0';
-    m_szSndIdle2[MAX_PATH-1] = '\0';
-    m_szSndIdle3[MAX_PATH-1] = '\0';
-    m_szSndSleep[MAX_PATH-1] = '\0';
-    m_szSndAwake[MAX_PATH-1] = '\0';
 
     //initialse footprint icons
     for( int i = 0; i < 8; i++ ) m_hIconFootprints[i] = NULL;
@@ -717,85 +699,6 @@ BOOL CNeko::LoadImages()
 
 /********************************************************************************************************/
 
-//Idle-sound cache.
-//
-//Passing SND_FILENAME makes the OS re-open and re-decode the WAV on every play.
-//Instead we decode each file into memory once and play it from a GlobalAlloc'd
-//buffer afterwards. Sound playback is asynchronous, so a buffer that is playing
-//must stay valid: cached buffers are deliberately NEVER freed or evicted for the
-//lifetime of the process. If the table is full, or the file cannot be read, we
-//fall back to the original SND_FILENAME play so behaviour never regresses.
-
-#define SND_CACHE_ENTRIES 8
-
-struct SndCacheEntry
-{
-    char    szPath[MAX_PATH];
-    HGLOBAL hMem;       //GMEM_FIXED: the handle IS the data pointer
-};
-
-static SndCacheEntry g_sndCache[SND_CACHE_ENTRIES];
-static int           g_nSndCache = 0;
-
-static void PlaySoundCached( LPCSTR szFile )
-{
-    //no file configured - stay silent, exactly as before
-    if( szFile == NULL || *szFile == '\0' )
-        return;
-
-    const DWORD dwBaseFlags = SND_NOSTOP|SND_NOWAIT|SND_NODEFAULT|SND_ASYNC;
-
-    //look for an already-decoded copy
-    for( int i = 0; i < g_nSndCache; i++ )
-    {
-        if( g_sndCache[i].hMem != NULL && lstrcmpiA( g_sndCache[i].szPath, szFile ) == 0 )
-        {
-            PlaySound( (LPCSTR)g_sndCache[i].hMem, NULL, SND_MEMORY|dwBaseFlags );
-            return;
-        }
-    }
-
-    //not cached: try to read the whole file into memory
-    if( g_nSndCache < SND_CACHE_ENTRIES )
-    {
-        HANDLE hFile = CreateFile( szFile, GENERIC_READ, FILE_SHARE_READ, NULL,
-                                   OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
-        if( hFile != INVALID_HANDLE_VALUE )
-        {
-            DWORD dwSize = GetFileSize( hFile, NULL );
-            if( dwSize != INVALID_FILE_SIZE && dwSize > 0 )
-            {
-                HGLOBAL hMem = GlobalAlloc( GMEM_FIXED, dwSize );
-                if( hMem != NULL )
-                {
-                    DWORD dwRead = 0;
-                    BOOL  bOk = ReadFile( hFile, (LPVOID)hMem, dwSize, &dwRead, NULL ) && ( dwRead == dwSize );
-                    if( bOk )
-                    {
-                        //keep the buffer alive for the process lifetime: an async
-                        //play outlives this call and must never dangle
-                        lstrcpynA( g_sndCache[g_nSndCache].szPath, szFile, MAX_PATH );
-                        g_sndCache[g_nSndCache].hMem = hMem;
-                        g_nSndCache++;
-
-                        PlaySound( (LPCSTR)hMem, NULL, SND_MEMORY|dwBaseFlags );
-                        CloseHandle( hFile );
-                        return;
-                    }
-
-                    GlobalFree( hMem );
-                }
-            }
-            CloseHandle( hFile );
-        }
-    }
-
-    //fallback: original behaviour (the OS re-reads and re-decodes the file)
-    PlaySound( szFile, NULL, dwBaseFlags|SND_FILENAME );
-}
-
-/********************************************************************************************************/
-
 void CNeko::Update()
 {
     //Everything this tick draws is composed once, at the end: RunTowards()
@@ -911,33 +814,6 @@ void CNeko::Update()
             //unknown action: do nothing harmful and keep the cat idle rather
             //than relying on a fall-through (m_Action is clamped to 0..4 on load)
             break;
-    }
-
-    //play idle sounds
-    if( m_dwSndFrequency )
-    {
-        if( (DWORD)(rand()%100) <= m_dwSndFrequency )
-        {
-            switch( GetState() )
-            {
-                case AWAKE:
-                    PlaySoundCached( m_szSndAwake );
-                    break;
-
-                case SLEEP:
-                    PlaySoundCached( m_szSndSleep );
-                    break;
-
-				default:
-                    switch( rand()%3 )
-                    {
-                        case 0:  PlaySoundCached( m_szSndIdle1 ); break;
-                        case 1:  PlaySoundCached( m_szSndIdle2 ); break;
-                        default: PlaySoundCached( m_szSndIdle3 ); break;
-                    }
-                break;
-            }
-        }
     }
 
     //commit everything this tick drew as one frame

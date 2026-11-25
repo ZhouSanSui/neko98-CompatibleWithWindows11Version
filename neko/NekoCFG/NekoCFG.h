@@ -1,4 +1,4 @@
-#ifndef _NEKOCFG_H
+﻿#ifndef _NEKOCFG_H
 #define _NEKOCFG_H
 
 #include "..\NekoCommon.h"
@@ -24,13 +24,8 @@ typedef struct tagCATSETTINGS {
     DWORD uSpeed;
     DWORD uMouseSensitivity;
 
-    //sounds
-    char szSndIdle1[MAX_PATH];
-    char szSndIdle2[MAX_PATH];
-    char szSndIdle3[MAX_PATH];
-	char szSndSleep[MAX_PATH];
-    char szSndAwake[MAX_PATH];
-	DWORD uSndFrequency;
+    //sounds: removed in this build at the user's request. The registry values may
+    //still exist on an upgraded machine; nothing reads them any more.
 
     //independence
     DWORD uAction;
@@ -50,8 +45,6 @@ typedef struct tagCATSETTINGS {
 #define MAX_SPEED 48
 #define MIN_SENSE 1
 #define MAX_SENSE 64
-#define MIN_SNDFREQ 0
-#define MAX_SNDFREQ 100
 #define MIN_SCALE 10
 #define MAX_SCALE 400
 
@@ -61,6 +54,7 @@ extern void WINAPI ShutdownPropertyDialog();
 extern void WINAPI OnSelChanged( HWND hWnd );
 extern void WINAPI SetActiveCat( LPCATSETTINGS lpCat );
 extern void WINAPI GetDialogSettings();
+extern void WINAPI SaveHotkeyPage();
 
 //external variables
 extern HINSTANCE g_hInstance;

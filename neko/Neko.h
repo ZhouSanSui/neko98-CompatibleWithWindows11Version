@@ -112,9 +112,8 @@ protected:
     BOOL m_bFootprints;
 	
 	//sound stuff
-	char m_szSndIdle1[MAX_PATH], m_szSndIdle2[MAX_PATH], m_szSndIdle3[MAX_PATH];
-	char m_szSndSleep[MAX_PATH], m_szSndAwake[MAX_PATH];
-	DWORD m_dwSndFrequency;
+	//Sound members removed in this build: the user asked for the whole sound
+	//feature to go, so there is no WAV path list and no playback frequency left.
 
 	//named Neko stuff
 	char m_szName[MAX_NEKO_NAME];

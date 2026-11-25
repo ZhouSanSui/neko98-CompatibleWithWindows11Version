@@ -69,12 +69,12 @@
 #define IDD_CONFIG                      158
 #define IDD_IMAGELIB                    159
 #define IDD_SCALE                       160
-#define IDD_SOUND                       162
+#define IDD_HOTKEYS                     162
 #define IDD_NEWNEKO                     163
 #define IDD_ABOUTBOX                    164
 #define IDC_PLAYING                     165
 #define IDD_EFFECTS                     165
-#define IDI_TAB_SOUNDS                  168
+#define IDI_TAB_HOTKEYS                 168
 #define IDI_TAB_MOVEMENT                169
 #define IDI_TAB_DISPLAY                 170
 #define IDI_TAB_INDEPENDENCE            171
@@ -116,6 +116,25 @@
 #define IDC_AUTOSTART                   1059
 #define IDC_HOTKEY                      1060
 #define IDC_HIDEHOTKEY                  1061
+#define IDC_HKTYPE                      1062
+#define IDC_HKADD                       1063
+#define IDC_HKLIST                      1064
+#define IDC_HKHOTKEY                    1065
+#define IDC_HKADDR                      1066
+#define IDC_HKPORT                      1067
+#define IDC_HKBROWSER                   1068
+#define IDC_HKURL                       1069
+#define IDC_HKBROWSE                    1070
+#define IDC_HKPROJA                     1071
+#define IDC_HKPROJB                     1072
+#define IDC_HKDEL                       1073
+#define IDC_HKINFO                      1074
+#define IDC_HKADDRLBL                   1075
+#define IDC_HKPORTLBL                   1076
+#define IDC_HKBROWSERLBL                1077
+#define IDC_HKURLLBL                    1078
+#define IDC_HKPROJALBL                  1079
+#define IDC_HKPROJBLBL                  1080
 
 // Next default values for new objects
 // 
@@ -123,7 +142,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        174
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1062
+#define _APS_NEXT_CONTROL_VALUE         1081
 #define _APS_NEXT_SYMED_VALUE           104
 #endif
 #endif

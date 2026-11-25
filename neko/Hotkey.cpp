@@ -196,3 +196,100 @@ BOOL NekoHotkeyIsUsable( DWORD dwHotkey )
 
     return TRUE;
 }
+
+
+/*=============================================================================
+  Generic registration for the shortcut list
+=============================================================================*/
+
+//What we currently hold, so a release never guesses. The id space is chosen by
+//the caller (the pet uses NEKO_HOTKEY_ID_BASE + list index), so this only needs
+//to remember which ids are live and what combination each one holds.
+#define NEKO_HOTKEY_MAX_REG 64
+
+typedef struct tagREGISTERED
+{
+    UINT  uId;
+    DWORD dwHotkey;
+} REGISTERED;
+
+static REGISTERED g_aRegistered[NEKO_HOTKEY_MAX_REG];
+static int        g_nRegistered = 0;
+
+static REGISTERED* FindRegistered( UINT uId )
+{
+    int i;
+    for( i = 0; i < g_nRegistered; i++ )
+        if( g_aRegistered[i].uId == uId ) return &g_aRegistered[i];
+    return NULL;
+}
+
+BOOL NekoHotkeyRegister( HWND hWnd, UINT uId, DWORD dwHotkey )
+{
+    if( hWnd == NULL ) return FALSE;
+
+    //Always drop the id first: re-applying a changed combination must not leave
+    //the old one registered, or the previous key would keep firing.
+    NekoHotkeyUnregister( hWnd, uId );
+
+    if( dwHotkey == 0 ) return FALSE;
+    if( !NekoHotkeyIsUsable( dwHotkey ) ) return FALSE;
+
+    //Another entry may already own this combination. Registering it again would
+    //fail anyway, but checking here lets the caller report WHICH entry is bad.
+    {
+        int i;
+        for( i = 0; i < g_nRegistered; i++ )
+            if( g_aRegistered[i].dwHotkey == dwHotkey ) return FALSE;
+    }
+
+    BYTE bVk  = (BYTE)( dwHotkey & 0xFF );
+    BYTE bMod = (BYTE)( (dwHotkey >> 8) & 0xFF );
+
+    UINT uMod = 0;
+    if( bMod & HOTKEYF_CONTROL_ ) uMod |= MOD_CONTROL;
+    if( bMod & HOTKEYF_ALT_ )     uMod |= MOD_ALT;
+    if( bMod & HOTKEYF_SHIFT_ )   uMod |= MOD_SHIFT;
+    if( bMod & HOTKEYF_EXT_ )     uMod |= MOD_WIN;
+
+    if( !RegisterHotKey( hWnd, uId, uMod | MOD_NOREPEAT, bVk ) )
+    {
+        //Some older drivers reject MOD_NOREPEAT; retry without it before
+        //concluding that somebody else owns the combination.
+        if( !RegisterHotKey( hWnd, uId, uMod, bVk ) )
+            return FALSE;
+    }
+
+    if( g_nRegistered < NEKO_HOTKEY_MAX_REG )
+    {
+        g_aRegistered[g_nRegistered].uId      = uId;
+        g_aRegistered[g_nRegistered].dwHotkey = dwHotkey;
+        g_nRegistered++;
+    }
+
+    return TRUE;
+}
+
+void NekoHotkeyUnregister( HWND hWnd, UINT uId )
+{
+    REGISTERED* p = FindRegistered( uId );
+    if( p == NULL ) return;
+
+    if( hWnd != NULL ) UnregisterHotKey( hWnd, uId );
+
+    //Compact the array rather than leaving a hole, so the "no duplicates"
+    //check above keeps working over exactly the live entries.
+    {
+        int i = (int)( p - g_aRegistered );
+        int j;
+        for( j = i; j + 1 < g_nRegistered; j++ )
+            g_aRegistered[j] = g_aRegistered[j + 1];
+        g_nRegistered--;
+    }
+}
+
+void NekoHotkeyUnregisterAll( HWND hWnd )
+{
+    while( g_nRegistered > 0 )
+        NekoHotkeyUnregister( hWnd, g_aRegistered[g_nRegistered - 1].uId );
+}

@@ -102,11 +102,21 @@ BOOL ProxyIsEnabled()
 
 BOOL ProxySetEnabled( BOOL bEnable )
 {
+    return ProxySetEnabledEx( bEnable, NULL );
+}
+
+
+BOOL ProxySetEnabledEx( BOOL bEnable, const char* szServer )
+{
     HKEY hKey = NULL;
     LONG lRes = RegCreateKeyExA( HKEY_CURRENT_USER, g_szInetKey, 0, NULL,
                                  REG_OPTION_NON_VOLATILE, KEY_QUERY_VALUE | KEY_SET_VALUE,
                                  NULL, &hKey, NULL );
     if( lRes != ERROR_SUCCESS ) return FALSE;
+
+    //An empty address would enable a proxy pointed at nowhere. Fall back to the
+    //built-in default rather than writing something unusable.
+    if( szServer == NULL || szServer[0] == '\0' ) szServer = NEKO_PROXY_SERVER;
 
     BOOL bOk = TRUE;
 
@@ -115,7 +125,7 @@ BOOL ProxySetEnabled( BOOL bEnable )
         //Always (re)state the server: a machine that has never configured a
         //proxy has ProxyServer empty, and enabling a blank proxy would be a
         //no-op that looks like a broken hotkey.
-        bOk = WriteString( hKey, "ProxyServer", NEKO_PROXY_SERVER ) && bOk;
+        bOk = WriteString( hKey, "ProxyServer", szServer ) && bOk;
 
         //Preserve a hand-edited bypass list, but make sure ours is present.
         char szExisting[2048];
@@ -140,10 +150,31 @@ BOOL ProxySetEnabled( BOOL bEnable )
 
 BOOL ProxyToggle()
 {
+    return ProxyToggleEx( NULL );
+}
+
+
+BOOL ProxyToggleEx( const char* szServer )
+{
     BOOL bNow = ProxyIsEnabled();
-    if( !ProxySetEnabled( !bNow ) )
+    if( !ProxySetEnabledEx( !bNow, szServer ) )
         return bNow;            //unchanged on failure
     return !bNow;
+}
+
+
+BOOL ProxyGetServer( char* pszOut, int cbOut )
+{
+    HKEY hKey = NULL;
+    if( pszOut == NULL || cbOut <= 0 ) return FALSE;
+    pszOut[0] = '\0';
+
+    if( RegOpenKeyExA( HKEY_CURRENT_USER, g_szInetKey, 0, KEY_QUERY_VALUE, &hKey ) != ERROR_SUCCESS )
+        return FALSE;
+
+    BOOL bOk = ReadString( hKey, "ProxyServer", pszOut, (DWORD)cbOut );
+    RegCloseKey( hKey );
+    return bOk;
 }
 
 #endif //__PROXYTOGGLE_CPP__

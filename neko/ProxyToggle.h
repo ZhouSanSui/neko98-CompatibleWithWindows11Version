@@ -23,8 +23,10 @@
 #ifndef __PROXYTOGGLE_H__
 #define __PROXYTOGGLE_H__
 
-//The proxy this build is wired to. Kept as macros so the settings dialog and the
-//hotkey handler cannot disagree about them.
+//The proxy used when the caller does not name one. Each shortcut entry can carry
+//its own host and port (see HotkeyList.h), so the address is a parameter now;
+//this default only keeps older call sites - and a registry that has never been
+//edited - working.
 #define NEKO_PROXY_SERVER    "192.168.10.210:7890"
 
 //The bypass list the user asked for, plus "<local>" which is Windows' own
@@ -40,14 +42,23 @@ BOOL ProxyIsEnabled();
 //Switch the manual proxy on or off.
 //
 //Enabling also (re)writes ProxyServer and ProxyOverride, so a machine whose
-//proxy is still blank ends up with the configuration this build was asked to
-//use. Disabling only clears ProxyEnable and leaves the address in place, so the
-//next enable is instant and the user does not lose a hand-edited address.
+//proxy is still blank ends up with a usable configuration. Disabling only clears
+//ProxyEnable and leaves the address in place, so the next enable is instant and
+//the user does not lose a hand-edited address.
+//
+//szServer is "host:port". Pass NULL (or an empty string) to keep the built-in
+//default, which is what older call sites do.
 //
 //Returns TRUE when the registry write and the WinINET refresh both succeeded.
 BOOL ProxySetEnabled( BOOL bEnable );
+BOOL ProxySetEnabledEx( BOOL bEnable, const char* szServer );
 
 //Convenience: flip the current state and report the state AFTER the flip.
 BOOL ProxyToggle();
+BOOL ProxyToggleEx( const char* szServer );
+
+//Read back the address currently configured, as "host:port". Used by the
+//settings dialog to show what is really in force and by the migration path.
+BOOL ProxyGetServer( char* pszOut, int cbOut );
 
 #endif //__PROXYTOGGLE_H__

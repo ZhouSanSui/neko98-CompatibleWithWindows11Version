@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include "NekoCFG.h"
 #include "..\NekoCommon.h"
+#include "..\Hotkey.h"
+#include "..\HotkeyList.h"
+#include "..\Actions.h"
 #include "NekoCFG_resource.h"
 #include "NekoCFG_resource.hm"
 
@@ -19,13 +22,6 @@ static DWORD dwHelpID[] = {
 
     IDC_SPEEDSLIDER,    HIDC_SPEEDSLIDER,
     IDC_SENSESLIDER,    HIDC_SENSESLIDER,
-
-    IDC_SOUNDFREQ,      HIDC_SOUNDFREQ,
-    IDC_SOUNDSAVAIL,    HIDC_SOUNDSAVAIL,
-    IDC_SOUNDNAME,      HIDC_SOUNDNAME,
-    IDC_PREVIEW,        HIDC_PREVIEW,
-    IDC_NONE,           HIDC_NONE,
-    IDC_BROWSE,         HIDC_BROWSE,
 
     IDC_ACTION,         HIDC_ACTION,
     IDC_ACTIONDESC,     HIDC_ACTIONDESC,
@@ -49,13 +45,13 @@ LPCATSETTINGS g_lpCurrentCat = NULL;
 #define NUM_PAGES 5
 BOOL CALLBACK PropPage_Display( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lParam );
 BOOL CALLBACK PropPage_Movement( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lParam );
-BOOL CALLBACK PropPage_Sound( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lParam );
+BOOL CALLBACK PropPage_Hotkeys( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lParam );
 BOOL CALLBACK PropPage_Independence( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lParam );
 BOOL CALLBACK PropPage_Effects( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lParam );
 TABINITDATA tibTabs[NUM_PAGES] = {
     { "显示",        IDD_DISPLAY,        (DLGPROC)PropPage_Display,      IDI_TAB_DISPLAY,        NULL },
     { "移动",        IDD_MOVEMENT,       (DLGPROC)PropPage_Movement,     IDI_TAB_MOVEMENT,       NULL },
-    { "声音",        IDD_SOUND,          (DLGPROC)PropPage_Sound,        IDI_TAB_SOUNDS,         NULL },
+    { "快捷键",      IDD_HOTKEYS,        (DLGPROC)PropPage_Hotkeys,      IDI_TAB_HOTKEYS,        NULL },
     { "独立行为",    IDD_INDEPENDENCE,   (DLGPROC)PropPage_Independence, IDI_TAB_INDEPENDENCE,   NULL },
     { "特效",        IDD_EFFECTS,        (DLGPROC)PropPage_Effects,      IDI_TAB_EFFECTS,        NULL },
 };
@@ -135,6 +131,21 @@ void WINAPI SetActiveCat( LPCATSETTINGS lpCat )
     GetDialogSettings();
     g_lpCurrentCat = lpCat;
     for( int i = 0; i < NUM_PAGES; i++ ) SendMessage( tibTabs[i].hDlg, MY_READSETTINGS, 0, 0 );
+}
+
+/* SaveHotkeyPage - the hot keys are machine-wide, so their page must be
+   flushed even when no cat is selected (GetDialogSettings does nothing in that
+   case, which would silently drop edits made on the 快捷键 tab). */
+void WINAPI SaveHotkeyPage()
+{
+    for( int i = 0; i < NUM_PAGES; i++ )
+    {
+        if( tibTabs[i].uIDDialog == (UINT)IDD_HOTKEYS )
+        {
+            if( tibTabs[i].hDlg ) SendMessage( tibTabs[i].hDlg, MY_WRITESETTINGS, 0, 0 );
+            return;
+        }
+    }
 }
 
 /* GetDialogSettings - causes all property pages to write their settings into the data structure */
@@ -292,148 +303,458 @@ BOOL CALLBACK PropPage_Movement( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lP
     return TRUE;
 }
 
-/* PropPage_Sound - message processsing function for the 'sound' property page */
-BOOL CALLBACK PropPage_Sound( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lParam )
-{
-    static HCURSOR s_hcPlaying = NULL;
+/* PropPage_Hotkeys - the "快捷键" property page.
 
+   This page owns the WHOLE shortcut list (it is a program-wide setting, not a
+   per-cat one): one row per shortcut, each row carrying its own key combination
+   and its own parameters.
+
+   Layout, three bands:
+     top    - "add a shortcut of this kind" (type combo + the '+' button)
+     middle - the list, two columns (function / key)
+     bottom - the editor for the selected row
+
+   The bottom band is shared by every kind: the hot key control is always there,
+   while the kind-specific fields (proxy address + port, browser + url, the two
+   projection modes) occupy the same coordinates and exactly one group is shown
+   at a time. Clicking the row that is already current collapses the detail band,
+   which is what the user asked for ("再次点击方式名收缩"). */
+
+static const char* g_szBrowserIds[] = { "edge", "chrome", "custom" };
+
+#define HK_COL_FUNC 0
+#define HK_COL_KEY  1
+
+/* the row whose parameters are currently in the editor, and whether the
+   detail band is expanded */
+static int  s_nRow    = -1;
+static BOOL s_bDetail = TRUE;
+
+/* Guards against re-entrancy. ListView_SetItemState sends LVN_ITEMCHANGED,
+   which lands back in this handler, which would select the row again: without
+   this flag the handler recurses until the stack overflows (0xC00000FD, the
+   "settings dialog vanishes after a few seconds" crash). */
+static BOOL s_bInNotify = FALSE;
+
+/* Pairs of (field, label) so the label follows its field. */
+typedef struct tagHKFIELD
+{
+    UINT uField;
+    UINT uLabel;
+    int  nGroup;        /* 1 proxy, 2 website, 3 projection */
+} HKFIELD;
+
+static const HKFIELD g_aHkFields[] =
+{
+    { IDC_HKADDR,    IDC_HKADDRLBL,    1 },
+    { IDC_HKPORT,    IDC_HKPORTLBL,    1 },
+    { IDC_HKBROWSER, IDC_HKBROWSERLBL, 2 },
+    { IDC_HKURL,     IDC_HKURLLBL,     2 },
+    { IDC_HKBROWSE,  0,                2 },
+    { IDC_HKPROJA,   IDC_HKPROJALBL,   3 },
+    { IDC_HKPROJB,   IDC_HKPROJBLBL,   3 },
+};
+#define HK_FIELD_COUNT (int)( sizeof g_aHkFields / sizeof g_aHkFields[0] )
+
+/* Which display group a kind of shortcut needs. 0 = none. */
+static int HotkeyPageGroupOf( DWORD dwType )
+{
+    switch( dwType )
+    {
+        case NEKO_HT_PROXY:      return 1;
+        case NEKO_HT_WEBSITE:    return 2;
+        case NEKO_HT_PROJECTION: return 3;
+        default:                 return 0;
+    }
+}
+
+/* Show only the controls that belong to the given kind. When bVisible is FALSE
+   the whole detail band is hidden, which is the collapsed state. */
+static void HotkeyPageShowDetail( HWND hPage, DWORD dwType, BOOL bVisible )
+{
+    int  nGroup = bVisible ? HotkeyPageGroupOf( dwType ) : 0;
+    int  i;
+
+    for( i = 0; i < HK_FIELD_COUNT; i++ )
+    {
+        BOOL bShow = ( bVisible && g_aHkFields[i].nGroup == nGroup );
+
+        //the browse button only matters for the "custom" browser, and that is
+        //decided again in the CBN_SELCHANGE handler
+        if( g_aHkFields[i].uField == IDC_HKBROWSE )
+            bShow = bShow &&
+                    ( SendDlgItemMessage( hPage, IDC_HKBROWSER, CB_GETCURSEL, 0, 0 ) == NEKO_BROWSER_CUSTOM );
+
+        ShowWindow( GetDlgItem( hPage, g_aHkFields[i].uField ), bShow ? SW_SHOW : SW_HIDE );
+        if( g_aHkFields[i].uLabel != 0 )
+            ShowWindow( GetDlgItem( hPage, g_aHkFields[i].uLabel ), bShow ? SW_SHOW : SW_HIDE );
+    }
+}
+
+/* Put the given row's values into the editor controls. */
+static void HotkeyPageLoadRow( HWND hPage, int nRow )
+{
+    int nBrowser;
+
+    if( nRow < 0 || nRow >= g_nHotkeyList )
+    {
+        SendDlgItemMessage( hPage, IDC_HKHOTKEY, HKM_SETHOTKEY, 0, 0 );
+        SetDlgItemText( hPage, IDC_HKADDR, "" );
+        SetDlgItemText( hPage, IDC_HKPORT, "" );
+        SetDlgItemText( hPage, IDC_HKURL, "" );
+        SetDlgItemText( hPage, IDC_HKINFO, "" );
+        HotkeyPageShowDetail( hPage, NEKO_HT_HIDE, FALSE );
+        return;
+    }
+
+    SendDlgItemMessage( hPage, IDC_HKHOTKEY, HKM_SETHOTKEY,
+                        (WPARAM)(WORD)g_HotkeyList[nRow].dwHotkey, 0 );
+
+    switch( g_HotkeyList[nRow].dwType )
+    {
+        case NEKO_HT_PROXY:
+            SetDlgItemText( hPage, IDC_HKADDR, g_HotkeyList[nRow].szP1 );
+            SetDlgItemText( hPage, IDC_HKPORT, g_HotkeyList[nRow].szP2 );
+            SetDlgItemText( hPage, IDC_HKINFO, "按该快捷键可切换系统手动代理的开关。" );
+            break;
+
+        case NEKO_HT_WEBSITE:
+            nBrowser = WebLauncherBrowserFromId( g_HotkeyList[nRow].szP2 );
+            SendDlgItemMessage( hPage, IDC_HKBROWSER, CB_SETCURSEL, (WPARAM)nBrowser, 0 );
+            SetDlgItemText( hPage, IDC_HKURL, g_HotkeyList[nRow].szP1 );
+            SetDlgItemText( hPage, IDC_HKINFO, "按该快捷键可在指定浏览器里打开网址。" );
+            break;
+
+        case NEKO_HT_PROJECTION:
+            SendDlgItemMessage( hPage, IDC_HKPROJA, CB_SETCURSEL,
+                                (WPARAM)HotkeyProjectionIndex( g_HotkeyList[nRow].szP1 ), 0 );
+            SendDlgItemMessage( hPage, IDC_HKPROJB, CB_SETCURSEL,
+                                (WPARAM)HotkeyProjectionIndex( g_HotkeyList[nRow].szP2 ), 0 );
+            SetDlgItemText( hPage, IDC_HKINFO, "按该快捷键在两种投影方式之间来回切换。" );
+            break;
+
+        case NEKO_HT_NOSLEEP:
+            SetDlgItemText( hPage, IDC_HKINFO, "按该快捷键可阻止或恢复系统自动休眠。" );
+            break;
+
+        case NEKO_HT_HIDE:
+        default:
+            SetDlgItemText( hPage, IDC_HKINFO,
+                            "按该快捷键依次：放大 300% -> 隐藏 -> 恢复正常显示。" );
+            break;
+    }
+
+    HotkeyPageShowDetail( hPage, g_HotkeyList[nRow].dwType, s_bDetail );
+}
+
+/* Copy the editor controls back into the given row. Called before switching
+   rows, before deleting, and before the list is written out. */
+static void HotkeyPageStoreRow( HWND hPage, int nRow )
+{
+    WORD wKey;
+    char szBuf[NEKO_HT_P1];
+
+    if( nRow < 0 || nRow >= g_nHotkeyList ) return;
+
+    wKey = (WORD)SendDlgItemMessage( hPage, IDC_HKHOTKEY, HKM_GETHOTKEY, 0, 0 );
+    g_HotkeyList[nRow].dwHotkey = NekoHotkeyFromControl( wKey );
+
+    switch( g_HotkeyList[nRow].dwType )
+    {
+        case NEKO_HT_PROXY:
+            GetDlgItemText( hPage, IDC_HKADDR, szBuf, sizeof szBuf );
+            lstrcpyn( g_HotkeyList[nRow].szP1, szBuf, NEKO_HT_P1 );
+            GetDlgItemText( hPage, IDC_HKPORT, szBuf, sizeof szBuf );
+            lstrcpyn( g_HotkeyList[nRow].szP2, szBuf, NEKO_HT_P2 );
+            break;
+
+        case NEKO_HT_WEBSITE:
+        {
+            int iSel = (int)SendDlgItemMessage( hPage, IDC_HKBROWSER, CB_GETCURSEL, 0, 0 );
+            if( iSel < 0 || iSel > 2 ) iSel = NEKO_BROWSER_EDGE;
+            lstrcpyn( g_HotkeyList[nRow].szP2, g_szBrowserIds[iSel], NEKO_HT_P2 );
+            GetDlgItemText( hPage, IDC_HKURL, szBuf, sizeof szBuf );
+            lstrcpyn( g_HotkeyList[nRow].szP1, szBuf, NEKO_HT_P1 );
+            break;
+        }
+
+        case NEKO_HT_PROJECTION:
+        {
+            int iA = (int)SendDlgItemMessage( hPage, IDC_HKPROJA, CB_GETCURSEL, 0, 0 );
+            int iB = (int)SendDlgItemMessage( hPage, IDC_HKPROJB, CB_GETCURSEL, 0, 0 );
+            if( iA < 0 || iA > 3 ) iA = 2;
+            if( iB < 0 || iB > 3 ) iB = 0;
+            lstrcpyn( g_HotkeyList[nRow].szP1, HotkeyProjectionMode( iA ), NEKO_HT_P1 );
+            lstrcpyn( g_HotkeyList[nRow].szP2, HotkeyProjectionMode( iB ), NEKO_HT_P2 );
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
+/* Rebuild the two columns from the globals. */
+static void HotkeyPageFillList( HWND hPage )
+{
+    HWND hList = GetDlgItem( hPage, IDC_HKLIST );
+    int  i;
+
+    SendMessage( hList, WM_SETREDRAW, FALSE, 0 );
+    ListView_DeleteAllItems( hList );
+
+    for( i = 0; i < g_nHotkeyList; i++ )
+    {
+        LVITEM lvi;
+        char   szLabel[256];
+        char   szKey[128];
+
+        ZeroMemory( &lvi, sizeof lvi );
+        lvi.mask     = LVIF_TEXT | LVIF_PARAM;
+        lvi.iItem    = i;
+        lvi.iSubItem = 0;
+        lvi.lParam   = (LPARAM)i;
+
+        HotkeyListLabel( &g_HotkeyList[i], szLabel, sizeof szLabel );
+        lvi.pszText = szLabel;
+        ListView_InsertItem( hList, &lvi );
+
+        NekoHotkeyFormat( g_HotkeyList[i].dwHotkey, szKey, sizeof szKey );
+        ListView_SetItemText( hList, i, HK_COL_KEY, szKey );
+    }
+
+    SendMessage( hList, WM_SETREDRAW, TRUE, 0 );
+    InvalidateRect( hList, NULL, TRUE );
+}
+
+/* Select one row and load it into the editor. */
+static void HotkeyPageSelect( HWND hPage, int nRow )
+{
+    HWND hList = GetDlgItem( hPage, IDC_HKLIST );
+    BOOL bWasInNotify = s_bInNotify;
+
+    /* Selecting a row sends LVN_ITEMCHANGED straight back into the page. The
+       caller is usually reacting to that very notification, so swallow it:
+       otherwise selecting would re-enter the handler and toggle the detail
+       band (or, before the guard existed, recurse until the stack blew). */
+    s_bInNotify = TRUE;
+
+    if( nRow < 0 || nRow >= g_nHotkeyList ) nRow = -1;
+    s_nRow = nRow;
+
+    ListView_SetItemState( hList, -1, 0, LVIS_SELECTED | LVIS_FOCUSED );
+    if( nRow >= 0 )
+    {
+        ListView_SetItemState( hList, nRow, LVIS_SELECTED | LVIS_FOCUSED,
+                               LVIS_SELECTED | LVIS_FOCUSED );
+        ListView_EnsureVisible( hList, nRow, FALSE );
+    }
+    HotkeyPageLoadRow( hPage, nRow );
+    s_bInNotify = bWasInNotify;
+}
+
+/* PropPage_Hotkeys - message processsing function for the 'hot keys' page */
+BOOL CALLBACK PropPage_Hotkeys( HWND hPage, UINT uMsg, WPARAM wParam, LPARAM lParam )
+{
     switch( uMsg )
     {
         case WM_INITDIALOG:
-            SendDlgItemMessage( hPage, IDC_PREVIEW, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)LoadImage( g_hInstance, MAKEINTRESOURCE(IDR_PLAYBITMAP), IMAGE_BITMAP, 0, 0, LR_LOADMAP3DCOLORS ) );
-            SendDlgItemMessage( hPage, IDC_SOUNDFREQ, TBM_SETRANGE, FALSE, MAKELPARAM(MIN_SNDFREQ,MAX_SNDFREQ) );
+        {
+            HWND hList = GetDlgItem( hPage, IDC_HKLIST );
+            LVCOLUMN col;
+            int i;
 
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_ADDSTRING, 0, (LPARAM)"空闲 一" );
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_ADDSTRING, 0, (LPARAM)"空闲 二" );
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_ADDSTRING, 0, (LPARAM)"空闲 三" );
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_ADDSTRING, 0, (LPARAM)"睡觉" );
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_ADDSTRING, 0, (LPARAM)"清醒" );
+            ZeroMemory( &col, sizeof col );
+            col.mask     = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+            col.pszText  = "快捷方式功能";
+            col.cx       = 92;
+            col.iSubItem = HK_COL_FUNC;
+            ListView_InsertColumn( hList, HK_COL_FUNC, &col );
+            col.pszText  = "快捷键";
+            col.cx       = 45;
+            col.iSubItem = HK_COL_KEY;
+            ListView_InsertColumn( hList, HK_COL_KEY, &col );
+            ListView_SetExtendedListViewStyle( hList, LVS_EX_FULLROWSELECT );
 
-            //load the playing cursor
-            s_hcPlaying = LoadCursor( g_hInstance, MAKEINTRESOURCE(IDC_PLAYING) );
+            for( i = 0; i < NEKO_HT_TYPES; i++ )
+                SendDlgItemMessage( hPage, IDC_HKTYPE, CB_ADDSTRING, 0,
+                                    (LPARAM)HotkeyTypeName( (DWORD)i ) );
+            SendDlgItemMessage( hPage, IDC_HKTYPE, CB_SETCURSEL, 0, 0 );
 
-            //select first item in the list & update
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_SETCURSEL, 0, 0 );
+            for( i = 0; i < 3; i++ )
+                SendDlgItemMessage( hPage, IDC_HKBROWSER, CB_ADDSTRING, 0,
+                                    (LPARAM)WebLauncherBrowserName( i ) );
+            SendDlgItemMessage( hPage, IDC_HKBROWSER, CB_SETCURSEL, 0, 0 );
+
+            for( i = 0; i < NEKO_PROJECTION_MODES; i++ )
+            {
+                SendDlgItemMessage( hPage, IDC_HKPROJA, CB_ADDSTRING, 0,
+                                    (LPARAM)HotkeyProjectionMode( i ) );
+                SendDlgItemMessage( hPage, IDC_HKPROJB, CB_ADDSTRING, 0,
+                                    (LPARAM)HotkeyProjectionMode( i ) );
+            }
+            SendDlgItemMessage( hPage, IDC_HKPROJA, CB_SETCURSEL, 2, 0 );
+            SendDlgItemMessage( hPage, IDC_HKPROJB, CB_SETCURSEL, 0, 0 );
+
+            //a combination without a modifier would be stolen from every other
+            //program, so one is required
+            SendDlgItemMessage( hPage, IDC_HKHOTKEY, HKM_SETRULES,
+                                HKCOMB_NONE | HKCOMB_S | HKCOMB_C | HKCOMB_A |
+                                HKCOMB_SC | HKCOMB_SA | HKCOMB_CA,
+                                MAKELPARAM( HOTKEYF_CONTROL | HOTKEYF_ALT, 0 ) );
+
+            HotkeyListLoad();
+            HotkeyPageFillList( hPage );
+            HotkeyPageSelect( hPage, g_nHotkeyList > 0 ? 0 : -1 );
             break;
-
-        case WM_DESTROY:
-            DestroyCursor( s_hcPlaying );
-            break;
+        }
 
         case MY_WRITESETTINGS:
-            g_lpCurrentCat->uSndFrequency = SendDlgItemMessage( hPage, IDC_SOUNDFREQ, TBM_GETPOS, 0, 0 );
+            HotkeyPageStoreRow( hPage, s_nRow );
+            HotkeyListSave();
             break;
 
         case MY_READSETTINGS:
-            SendDlgItemMessage( hPage, IDC_SOUNDFREQ, TBM_SETPOS, TRUE, g_lpCurrentCat->uSndFrequency );
-
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_SETITEMDATA, 0, (LPARAM)g_lpCurrentCat->szSndIdle1 );
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_SETITEMDATA, 1, (LPARAM)g_lpCurrentCat->szSndIdle2 );
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_SETITEMDATA, 2, (LPARAM)g_lpCurrentCat->szSndIdle3 );
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_SETITEMDATA, 3, (LPARAM)g_lpCurrentCat->szSndSleep );
-            SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_SETITEMDATA, 4, (LPARAM)g_lpCurrentCat->szSndAwake );
-            PostMessage( hPage, WM_COMMAND, MAKEWPARAM( IDC_SOUNDSAVAIL, 0 ), 0 );
+            HotkeyListLoad();
+            HotkeyPageFillList( hPage );
+            HotkeyPageSelect( hPage, ( s_nRow >= 0 && s_nRow < g_nHotkeyList ) ? s_nRow
+                                                                              : ( g_nHotkeyList > 0 ? 0 : -1 ) );
             break;
+
+        case WM_NOTIFY:
+        {
+            NMHDR* pHdr = (NMHDR*)lParam;
+
+            if( pHdr->idFrom == (UINT)IDC_HKLIST && pHdr->code == LVN_ITEMCHANGED
+                && !s_bInNotify )
+            {
+                NMLISTVIEW* pLV = (NMLISTVIEW*)lParam;
+
+                //only react to a row BECOMING selected
+                if( ( pLV->uChanged & LVIF_STATE ) &&
+                    ( pLV->uNewState & LVIS_SELECTED ) &&
+                    !( pLV->uOldState & LVIS_SELECTED ) )
+                {
+                    int nRow = pLV->iItem;
+
+                    s_bInNotify = TRUE;
+
+                    HotkeyPageStoreRow( hPage, s_nRow );
+
+                    //moving to a different row always shows its settings; the
+                    //collapse toggle lives in the NM_CLICK branch below
+                    s_bDetail = TRUE;
+
+                    HotkeyPageSelect( hPage, nRow );
+                    s_bInNotify = FALSE;
+                }
+            }
+            else if( pHdr->idFrom == (UINT)IDC_HKLIST && pHdr->code == NM_CLICK )
+            {
+                /* Clicking the row that is ALREADY current collapses the
+                   detail band and clicking it again expands it -- that is the
+                   "再次点击方式名收缩" behaviour the user asked for. A click on a
+                   different row arrives as LVN_ITEMCHANGED first, so by the time
+                   we get here s_nRow is already that row and nothing toggles. */
+                HWND hList = GetDlgItem( hPage, IDC_HKLIST );
+                LVHITTESTINFO ht;
+
+                ZeroMemory( &ht, sizeof ht );
+                GetCursorPos( &ht.pt );
+                ScreenToClient( hList, &ht.pt );
+
+                if( ListView_HitTest( hList, &ht ) == s_nRow && s_nRow >= 0 )
+                {
+                    s_bDetail = !s_bDetail;
+                    HotkeyPageLoadRow( hPage, s_nRow );
+                }
+            }
+            break;
+        }
 
         case WM_COMMAND:
             switch( LOWORD(wParam) )
             {
-                case IDC_SOUNDSAVAIL:
+                case IDC_HKADD:
                 {
-                    int iCurSel = SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETCURSEL, 0, 0 );
-                    char * lpszFile = (char*)SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETITEMDATA, iCurSel, 0 );
+                    int iType = (int)SendDlgItemMessage( hPage, IDC_HKTYPE, CB_GETCURSEL, 0, 0 );
+                    int nNew;
 
-                    if( strcmp( lpszFile, "" ) == 0 )
-                    {
-                        SetDlgItemText( hPage, IDC_SOUNDNAME, "" );
-                        EnableWindow( GetDlgItem( hPage, IDC_PREVIEW ), FALSE );
-                        EnableWindow( GetDlgItem( hPage, IDC_NONE ), FALSE );
-                    }
-                    else
-                    {
-                        SetDlgItemText( hPage, IDC_SOUNDNAME, lpszFile );
-                        EnableWindow( GetDlgItem( hPage, IDC_PREVIEW ), TRUE );
-                        EnableWindow( GetDlgItem( hPage, IDC_NONE ), TRUE );
-                    }
+                    if( iType < 0 || iType >= NEKO_HT_TYPES ) break;
 
+                    HotkeyPageStoreRow( hPage, s_nRow );
+
+                    nNew = HotkeyListAppend( (DWORD)iType );
+                    if( nNew < 0 )
+                    {
+                        MessageBox( hPage, "快捷方式数量已达上限（24 个）。",
+                                    szNekoWindowTitle, MB_ICONINFORMATION );
+                        break;
+                    }
+                    HotkeyListSave();
+                    HotkeyPageFillList( hPage );
+                    s_bDetail = TRUE;
+                    HotkeyPageSelect( hPage, nNew );
+                    //the first thing the user wants with a new row is a key
+                    SetFocus( GetDlgItem( hPage, IDC_HKHOTKEY ) );
                     break;
                 }
 
-                case IDC_PREVIEW:
+                case IDC_HKDEL:
                 {
-                    int iCurSel = SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETCURSEL, 0, 0 );
-                    char * lpszFile = (char*)SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETITEMDATA, iCurSel, 0 );
-
-                    if( strcmp( lpszFile, "" ) != 0 )
+                    if( s_nRow < 0 || s_nRow >= g_nHotkeyList )
                     {
-                        SetCursor( s_hcPlaying );
-                        if( !PlaySound( lpszFile, NULL, SND_FILENAME|SND_NODEFAULT|SND_SYNC ) ) MessageBox( hPage, "无法播放音频文件！", "预览声音", MB_ICONEXCLAMATION );
-                        SetCursor( LoadCursor( NULL, IDC_ARROW ) );
+                        MessageBox( hPage, "请先在列表中选择要删除的快捷方式。",
+                                    szNekoWindowTitle, MB_ICONINFORMATION );
+                        break;
                     }
+                    if( MessageBox( hPage, "确定要删除选中的快捷方式吗？",
+                                    szNekoWindowTitle, MB_YESNO | MB_ICONQUESTION ) != IDYES )
+                        break;
+
+                    HotkeyListRemove( s_nRow );
+                    HotkeyListSave();
+
+                    if( s_nRow >= g_nHotkeyList ) s_nRow = g_nHotkeyList - 1;
+                    HotkeyPageFillList( hPage );
+                    HotkeyPageSelect( hPage, g_nHotkeyList > 0 ? s_nRow : -1 );
                     break;
                 }
 
-                case IDC_NONE:
-                {
-                    int iCurSel = SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETCURSEL, 0, 0 );
-
-                    strcpy( (char*)SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETITEMDATA, iCurSel, 0 ), "" );
-
-                    //update the display
-                    PostMessage( hPage, WM_COMMAND, MAKEWPARAM( IDC_SOUNDSAVAIL, 0 ), 0 );
-                    break;
-                }
-
-                case IDC_BROWSE:
+                case IDC_HKBROWSE:
                 {
                     OPENFILENAME ofn;
-                    char szPrompt[256] = "浏览 ", szSoundName[256];
-                    LPCTSTR lpstrFileMasks ="声音文件 (*.wav)\0*.wav\0所有文件 (*.*)\0*.*\0\0";
-                    int iCurSel = SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETCURSEL, 0, 0 );
+                    char szPath[MAX_PATH] = "";
 
-                    //build browse dialog prompt
-                    SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETTEXT, iCurSel, (LPARAM)szSoundName );
-                    strcat( szPrompt, szSoundName );
-                    strcat( szPrompt, " 的声音" );
+                    ZeroMemory( &ofn, sizeof ofn );
+                    ofn.lStructSize = sizeof ofn;
+                    ofn.hwndOwner   = hPage;
+                    ofn.lpstrFilter = "可执行文件 (*.exe)\0*.exe\0所有文件 (*.*)\0*.*\0\0";
+                    ofn.lpstrFile   = szPath;
+                    ofn.nMaxFile    = MAX_PATH - 1;
+                    ofn.lpstrTitle  = "选择浏览器程序";
+                    ofn.Flags       = OFN_EXPLORER | OFN_HIDEREADONLY |
+                                      OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+                    ofn.lpstrDefExt = "exe";
 
-                    strcpy( szSoundName, (char*)SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETITEMDATA, iCurSel, 0 ) );
-
-                    //get the current file
-                    ofn.lStructSize = sizeof(OPENFILENAME);
-                    ofn.hwndOwner = hPage;
-                    ofn.hInstance = NULL;
-                    ofn.lpstrFilter = lpstrFileMasks;
-                    ofn.lpstrCustomFilter = NULL;
-                    ofn.nFilterIndex = 1;
-                    ofn.lpstrFile = szSoundName;
-                    ofn.nMaxFile = MAX_PATH-1;
-                    ofn.lpstrFileTitle = NULL;
-                    ofn.nMaxFileTitle = 0;
-                    ofn.lpstrInitialDir = NULL;
-                    ofn.lpstrTitle = szPrompt;
-                    ofn.Flags = OFN_EXPLORER|OFN_HIDEREADONLY|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST;
-                    ofn.lpstrDefExt = "WAV";
                     if( GetOpenFileName( &ofn ) )
-                    {
-                        //update everything with the new sound
-                        SetDlgItemText( hPage, IDC_SOUNDNAME, ofn.lpstrFile );
-                        strcpy( (char*)SendDlgItemMessage( hPage, IDC_SOUNDSAVAIL, LB_GETITEMDATA, iCurSel, 0 ), szSoundName );
-
-                        //update the display
-                        PostMessage( hPage, WM_COMMAND, MAKEWPARAM( IDC_SOUNDSAVAIL, 0 ), 0 );
-
-						//make sure it will make a sound
-						if( SendDlgItemMessage( hPage, IDC_SOUNDFREQ, TBM_GETPOS, 0, 0 ) == 0 )
-							SendDlgItemMessage( hPage, IDC_SOUNDFREQ, TBM_SETPOS, TRUE, 2 );
-
-                    }
+                        SetDlgItemText( hPage, IDC_HKURL, szPath );
                     break;
                 }
+
+                case IDC_HKBROWSER:
+                    if( HIWORD( wParam ) == CBN_SELCHANGE )
+                    {
+                        int iSel = (int)SendDlgItemMessage( hPage, IDC_HKBROWSER, CB_GETCURSEL, 0, 0 );
+                        ShowWindow( GetDlgItem( hPage, IDC_HKBROWSE ),
+                                    ( s_bDetail && iSel == NEKO_BROWSER_CUSTOM ) ? SW_SHOW : SW_HIDE );
+                    }
+                    break;
             }
             break;
 
         case WM_SHOWWINDOW:
-            if( wParam ) SetWindowPos( hPage, HWND_TOP, g_rcTabStart.left, g_rcTabStart.top, 0, 0, SWP_NOSIZE ); 
+            if( wParam ) SetWindowPos( hPage, HWND_TOP, g_rcTabStart.left, g_rcTabStart.top, 0, 0, SWP_NOSIZE );
             break;
 
         /* help stuff */

@@ -35,7 +35,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // remains consistent on all systems.
 IDI_APPICON             ICON    DISCARDABLE     "res\\appicon.ico"
 IDI_DEFAULT             ICON    DISCARDABLE     "..\\res\\Awake.ico"
-IDI_TAB_SOUNDS          ICON    DISCARDABLE     "Res\\sounds.ico"
+IDI_TAB_HOTKEYS         ICON    DISCARDABLE     "Res\\movement.ico"
 IDI_TAB_MOVEMENT        ICON    DISCARDABLE     "Res\\movement.ico"
 IDI_TAB_DISPLAY         ICON    DISCARDABLE     "Res\\displayi.ico"
 IDI_TAB_INDEPENDENCE    ICON    DISCARDABLE     "res\\independence.ico"
@@ -48,8 +48,8 @@ IDI_TAB_EFFECTS         ICON    DISCARDABLE     "res\\tab_effects.ico"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 4,2,0,0
- PRODUCTVERSION 4,2,0,0
+ FILEVERSION 4,3,0,0
+ PRODUCTVERSION 4,3,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -67,14 +67,14 @@ BEGIN
             VALUE "Comments", "NekoCFG 4.0g (Chinese, Windows 11 build)\0"
             VALUE "CompanyName", "DHSoft\0"
             VALUE "FileDescription", "Neko Desktop Pet Configuration\0"
-            VALUE "FileVersion", "4.2.0.0\0"
+            VALUE "FileVersion", "4.3.0.0\0"
             VALUE "InternalName", "NekoCFG\0"
             VALUE "LegalCopyright", "Copyright (C) 1999 DHSoft\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "NekoCFG.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "Neko 配置程序\0"
-            VALUE "ProductVersion", "4.2.0.0\0"
+            VALUE "ProductVersion", "4.3.0.0\0"
             VALUE "SpecialBuild", "\0"
         END
     END
@@ -102,17 +102,11 @@ BEGIN
     LTEXT           "名&称:",IDC_STATIC,7,7,22,8
     PUSHBUTTON      "添加新 Neko(&A)...",IDC_NEW,13,108,75,14,0,0,HIDC_NEW
     PUSHBUTTON      "删除(&D)",IDC_DELETE,93,108,41,14,0,0,HIDC_DELETE
-    GROUPBOX        "常规(&G)",IDC_STATIC,5,126,135,62
+    GROUPBOX        "常规(&G)",IDC_STATIC,5,126,135,38
     CONTROL         "在任务栏显示图标(&I)",IDC_TASKBAR,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,15,133,115,10,0,HIDC_TASKBAR
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,137,115,10,0,HIDC_TASKBAR
     CONTROL         "开机自动启动(&T)",IDC_AUTOSTART,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,15,146,115,10,0,HIDC_AUTOSTART
-    LTEXT           "代理(&J):",IDC_STATIC,15,161,45,9
-    CONTROL         "",IDC_HOTKEY,"msctls_hotkey32",WS_TABSTOP,
-                    62,160,58,12,0,HIDC_HOTKEY
-    LTEXT           "隐藏/缩放(&W):",IDC_STATIC,15,176,52,9
-    CONTROL         "",IDC_HIDEHOTKEY,"msctls_hotkey32",WS_TABSTOP,
-                    62,175,58,12,0,HIDC_HIDEHOTKEY
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,150,115,10,0,HIDC_AUTOSTART
     PUSHBUTTON      "关于(&U)...",IDC_ABOUT,7,189,50,14,0,0,HIDC_ABOUT
     CONTROL         "Tab1",IDC_TABS,"SysTabControl32",TCS_MULTILINE | 
                     WS_TABSTOP,146,7,159,178,0,HIDC_TABS
@@ -144,29 +138,44 @@ BEGIN
                     15,8
 END
 
-IDD_SOUND DIALOGEX 0, 0, 155, 151
+IDD_HOTKEYS DIALOGEX 0, 0, 155, 151
 STYLE DS_CONTROL | WS_CHILD
 FONT 8, "Microsoft YaHei", 0, 0, 0x1
 BEGIN
-    GROUPBOX        "频率(&F)",IDC_STATIC,8,7,140,63
-    LTEXT           "从不",IDC_STATIC,14,18,20,8
-    CONTROL         "Slider1",IDC_SOUNDFREQ,"msctls_trackbar32",TBS_NOTICKS | 
-                    WS_TABSTOP,15,27,125,17,0,HIDC_SOUNDFREQ
-    LTEXT           "总是",IDC_STATIC,118,18,23,8
-    LTEXT           "事件(&E):",IDC_STATIC,10,77,22,8
-    LISTBOX         IDC_SOUNDSAVAIL,32,76,116,43,LBS_NOINTEGRALHEIGHT | 
-                    WS_VSCROLL | WS_TABSTOP,0,HIDC_SOUNDSAVAIL
-    LTEXT           "名&称:",IDC_STATIC,9,121,22,8
-    EDITTEXT        IDC_SOUNDNAME,35,121,113,12,ES_AUTOHSCROLL | ES_READONLY | 
-                    NOT WS_BORDER,0,HIDC_SOUNDNAME
-    PUSHBUTTON      "",IDC_PREVIEW,10,134,15,14,BS_BITMAP,0,HIDC_PREVIEW
-    PUSHBUTTON      "无(&N)",IDC_NONE,43,134,50,14,0,0,HIDC_NONE
-    PUSHBUTTON      "浏览(&B)...",IDC_BROWSE,99,134,50,14,0,0,HIDC_BROWSE
-    LTEXT           "（当该值远高于 10% 时，性能可能会受到影响）",
-                    IDC_STATIC,15,47,130,20,0,WS_EX_TRANSPARENT
-    LTEXT           "部分",IDC_STATIC,66,18,20,8
-END
+    LTEXT           "功能(&F):",IDC_STATIC,7,8,28,9
+    COMBOBOX        IDC_HKTYPE,37,6,100,90,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP,0,HIDC_HKTYPE
+    PUSHBUTTON      "+",IDC_HKADD,141,6,7,13,0,0,HIDC_HKADD
 
+    CONTROL         "",IDC_HKLIST,"SysListView32",LVS_REPORT | LVS_SINGLESEL | 
+                    LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_BORDER | 
+                    WS_TABSTOP,7,24,141,58,0,HIDC_HKLIST
+
+    LTEXT           "快捷键(&K):",IDC_STATIC,7,89,40,9
+    CONTROL         "",IDC_HKHOTKEY,"msctls_hotkey32",WS_TABSTOP,50,87,56,13,0,0
+    PUSHBUTTON      "删除(&D)",IDC_HKDEL,110,87,38,14,0,0,HIDC_HKDEL
+
+    LTEXT           "服务器(&S):",IDC_HKADDRLBL,7,110,40,9
+    EDITTEXT        IDC_HKADDR,50,108,50,13,ES_AUTOHSCROLL
+    LTEXT           "端口(&P):",IDC_HKPORTLBL,104,110,20,9
+    EDITTEXT        IDC_HKPORT,125,108,23,13,ES_AUTOHSCROLL | ES_NUMBER
+
+    LTEXT           "浏览器(&B):",IDC_HKBROWSERLBL,7,110,40,9
+    COMBOBOX        IDC_HKBROWSER,50,108,58,80,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP,0,0
+    PUSHBUTTON      "路径...",IDC_HKBROWSE,111,108,37,13,0,0,0
+    LTEXT           "网址(&U):",IDC_HKURLLBL,7,128,40,9
+    EDITTEXT        IDC_HKURL,50,126,98,13,ES_AUTOHSCROLL
+
+    LTEXT           "从(&A):",IDC_HKPROJALBL,7,110,20,9
+    COMBOBOX        IDC_HKPROJA,27,108,52,80,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP,0,0
+    LTEXT           "到(&O):",IDC_HKPROJBLBL,83,110,16,9
+    COMBOBOX        IDC_HKPROJB,100,108,48,80,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP,0,0
+
+    LTEXT           "",IDC_HKINFO,7,142,141,8
+END
 IDD_NEWNEKO DIALOG DISCARDABLE  0, 0, 213, 66
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "新建 Neko"
@@ -270,16 +279,14 @@ BEGIN
         BOTTOMMARGIN, 144
     END
 
-    IDD_SOUND, DIALOG
+
+    IDD_HOTKEYS, DIALOG
     BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 148
-        VERTGUIDE, 10
         TOPMARGIN, 7
-        BOTTOMMARGIN, 149
-        HORZGUIDE, 137
+        BOTTOMMARGIN, 144
     END
-
     IDD_NEWNEKO, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -356,14 +363,11 @@ END
 // Cursor
 //
 
-IDC_PLAYING             CURSOR  DISCARDABLE     "res\\playing.cur"
-
 /////////////////////////////////////////////////////////////////////////////
 //
 // Bitmap
 //
 
-IDR_PLAYBITMAP          BITMAP  DISCARDABLE     "res\\play.bmp"
 #endif    // English (U.K.) resources
 /////////////////////////////////////////////////////////////////////////////
 

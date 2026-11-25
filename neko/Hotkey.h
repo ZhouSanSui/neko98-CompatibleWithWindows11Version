@@ -80,4 +80,22 @@ DWORD NekoHotkeyFromControl( WORD wHotkey );
 //that key for the whole desktop.
 BOOL NekoHotkeyIsUsable( DWORD dwHotkey );
 
+/*----------------------------------------------------------------------------
+  Generic registration, used by the shortcut LIST (HotkeyList.h).
+
+  The two fixed slots above are kept because existing callers and the hot key
+  test still use them, but the user now builds an arbitrary list of shortcuts,
+  so the pet needs to register N independent combinations under distinct ids.
+  These do exactly that, and remember what they registered so releasing is
+  exact even when the list changed in between.
+------------------------------------------------------------------------------*/
+
+//Register dwHotkey under uId. Any previous registration for that id is dropped
+//first. A zero or unusable combination unregisters and reports FALSE.
+BOOL NekoHotkeyRegister( HWND hWnd, UINT uId, DWORD dwHotkey );
+
+//Drop one id, or every id registered through this layer.
+void NekoHotkeyUnregister( HWND hWnd, UINT uId );
+void NekoHotkeyUnregisterAll( HWND hWnd );
+
 #endif
